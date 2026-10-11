@@ -61,9 +61,12 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 
 ### Picking presets
 
-- **Browse, don't type.** Pick presets from lists of system and user presets (`PresetPickerDialog`), filterable by vendor and printer, or open a file. Never ask for a path.
-- **Make every option identifiable.** Show the origin (vendor or "User") with each name. When the same name appears more than once (e.g. in two user folders), add whatever tells them apart.
-- **Hide non-selectable templates** (`instantiation: "false"`) by default.
+- **Browse, don't type.** Pick presets from lists of system and user presets (`PresetPickerDialog`), filterable by name, vendor, and printer (opening a file directly isn't built yet). Never ask for a path.
+  - A user preset belongs to the vendor of the system preset it derives from.
+  - The printer filter keeps presets made for that printer (`compatible_printers`, their own or inherited) and those that list none, which are for any printer.
+- **Make every option identifiable.** Show the vendor of system presets with each name. When the same name appears more than once (e.g. in two user folders), add whatever tells them apart: the user folder (`PresetRef.folder`), in the badge and in the checkbox's or radio's name.
+- **Hide non-selectable templates** (system presets with `instantiation: "false"`, which OrcaSlicer never offers) behind "Show templates", off by default, and badge them "Template" when shown.
+- **Listing details come from the hosts.** `listPresets` returns each preset with `details` (`PresetDetails`: selectable, printers, vendor), computed by core's `presetDetails` from the presets' own files and their `inherits` chains. The desktop and plugin hosts read every listed file for it (`createDetailsLister`, 32 at a time), and read system presets only once per session.
 
 ### Editing and bulk copy
 
@@ -305,7 +308,7 @@ Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, p
     - `user/<user_id>/<type>/*.json` for user presets.
     - `user/<user_id>/<type>/base/*.json` for user root presets (`inherits: ""`, every setting spelled out).
     - `<user_id>` is `default` when signed out, or the account id when signed in. Both folders can exist, often with copies of the same presets.
-  - Preset ids are absolute file paths. Names come from file names, which OrcaSlicer keeps equal to preset names.
+  - Preset ids are absolute file paths. Names come from file names, which OrcaSlicer keeps equal to preset names. User presets carry their user folder's name (`folder`).
   - Parents resolve in the child's own user folder first, then among system presets of the same vendor, then any system preset. Real user presets often inherit from other user presets, usually `base` ones.
   - A preset can name a parent that no longer exists. That's a real state of user data, so report it as `not-found`; it's not a bug.
   - Every file call goes through the `HostFileSystem` interface, so the contract tests run against an in-memory file system. The production implementation wraps Tauri's fs plugin.

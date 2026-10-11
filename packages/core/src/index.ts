@@ -1,4 +1,5 @@
 export * from './model/profile.ts';
+export * from './model/preset-details.ts';
 export * from './errors/errors.ts';
 export * from './ports/ports.ts';
 export * from './normalize/normalize-value.ts';

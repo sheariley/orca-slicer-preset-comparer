@@ -25,6 +25,7 @@ function toDocument([path, content]: [string, Record<string, unknown>]): Profile
       type: type as ProfileType,
       origin: origin === 'system' ? 'system' : 'user',
       ...(origin === 'system' && owner ? { vendor: owner } : {}),
+      ...(origin === 'user' && owner ? { folder: owner } : {}),
     },
     content,
   };

@@ -697,6 +697,11 @@ button.selection-button {
   gap: 8px;
 }
 
+.target-filters select {
+  min-height: 32px;
+  max-width: 280px;
+}
+
 .dialog-body .target-count {
   color: var(--c-muted);
 }

@@ -16,6 +16,7 @@ export const contractDocuments: readonly ProfileDocument[] = [
       inherits: 'common',
       nozzle_temperature: ['210'],
       instantiation: 'true',
+      compatible_printers: ['Printer A 0.4 nozzle'],
     },
   },
   {

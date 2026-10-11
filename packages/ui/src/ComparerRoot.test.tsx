@@ -70,10 +70,17 @@ const memorySettings = (saved: Record<string, unknown> = {}) => {
   return store;
 };
 
-function renderComparer(canSave = false, settings?: SettingsStore) {
+function renderComparer(
+  canSave = false,
+  settings?: SettingsStore,
+  extra: readonly ProfileDocument[] = [],
+) {
   const app = createComparerApp({
     ...(settings ? { settings } : {}),
-    repository: createMemoryHost({ documents, capabilities: { canSave } }),
+    repository: createMemoryHost({
+      documents: [...documents, ...extra],
+      capabilities: { canSave },
+    }),
     catalog: {
       describe: (key) =>
         key === 'nozzle_temperature'
@@ -280,6 +287,66 @@ describe('ComparerRoot', () => {
       expect(
         within(dialog).getByRole('checkbox', { name: 'Choose Generic PLA' }),
       ).not.toBeChecked();
+    });
+
+    it('hides templates until asked, and filters by vendor and printer', async () => {
+      const user = userEvent.setup();
+      renderComparer(false, undefined, [
+        filament('PLA @base', { instantiation: 'false' }, 'system'),
+        {
+          ref: {
+            id: 'W/PETG HF',
+            name: 'PETG HF',
+            type: 'filament',
+            origin: 'system',
+            vendor: 'W',
+          },
+          content: { name: 'PETG HF', compatible_printers: ['Printer W 0.4 nozzle'] },
+        },
+        filament('My PLA HF', {
+          inherits: 'Generic PLA',
+          compatible_printers: ['Printer V 0.6 nozzle'],
+        }),
+      ]);
+      const dialog = await openPicker(user);
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      expect(names(dialog)).not.toContain('PLA @base');
+
+      await user.click(within(dialog).getByLabelText('Show templates'));
+      expect(names(dialog)).toContain('PLA @base');
+      expect(within(dialog).getByText('Template')).toBeInTheDocument();
+
+      // A user preset belongs to its system parent's vendor.
+      await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Vendor' }), 'V');
+      expect(names(dialog)).toEqual(['Generic PLA', 'My PLA HF', 'PLA @base']);
+      await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Vendor' }), '');
+      // Presets that list no printers are for any printer.
+      await user.selectOptions(
+        within(dialog).getByRole('combobox', { name: 'Printer' }),
+        'Printer W 0.4 nozzle',
+      );
+      expect(names(dialog)).toEqual(['ABS', 'Generic PLA', 'PETG', 'PETG HF', 'PLA @base']);
+    });
+
+    it('tells apart presets with the same name by their user folder', async () => {
+      const user = userEvent.setup();
+      renderComparer(false, undefined, [
+        {
+          ref: { id: '1234/PETG', name: 'PETG', type: 'filament', origin: 'user', folder: '1234' },
+          content: { name: 'PETG' },
+        },
+      ]);
+      const dialog = await openPicker(user);
+
+      expect(
+        within(dialog).getByRole('checkbox', { name: 'Choose PETG (1234 folder)' }),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByText('1234 folder')).toBeInTheDocument();
+      // The fixture's own PETG has no folder of its own.
+      expect(
+        within(dialog).getByRole('checkbox', { name: 'Choose PETG (user)' }),
+      ).toBeInTheDocument();
+      expect(within(dialog).getByRole('checkbox', { name: 'Choose ABS' })).toBeInTheDocument();
     });
   });
 });

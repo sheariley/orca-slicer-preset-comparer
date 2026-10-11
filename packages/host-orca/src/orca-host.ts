@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION } from '@comparer/bridge-protocol';
-import { ComparerError, type ProfileRepository } from '@comparer/core';
+import { ComparerError, createDetailsLister, type ProfileRepository } from '@comparer/core';
 import { createBridgeClient } from './bridge-client.ts';
 import type { BridgeTransport } from './transport.ts';
 
@@ -24,12 +24,17 @@ export async function createOrcaHost(
     );
   }
 
+  // Listing details come from each preset's own file, read through the bridge (presetDetails).
+  const listWithDetails = createDetailsLister(
+    async (ref) => (await client.call('readDocument', { ref })).content,
+  );
+
   return {
     capabilities: hello.capabilities,
     newline: hello.newline,
     async listPresets(query) {
       const { presets } = await client.call('listPresets', query?.type ? { type: query.type } : {});
-      return presets;
+      return listWithDetails(presets);
     },
     async readDocument(ref) {
       const { content, text } = await client.call('readDocument', { ref });

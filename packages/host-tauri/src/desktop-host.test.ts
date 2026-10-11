@@ -120,14 +120,45 @@ describe('createDesktopHost', () => {
     const host = desktopHost(memoryFileSystem(files));
     const petg = (await host.listPresets()).find((ref) => ref.name === 'My PETG')!;
 
-    expect((await host.listPresets()).map((ref) => ref.name)).toEqual([
-      'My Base',
-      'My Base',
-      'My PETG',
+    // Same-named presets tell apart by their user folder.
+    expect((await host.listPresets()).map((ref) => `${ref.name} (${ref.folder})`).sort()).toEqual([
+      'My Base (1234)',
+      'My Base (default)',
+      'My PETG (default)',
     ]);
     expect((await host.resolveParent(petg, 'My Base'))?.id).toBe(
       `${DATA_DIR}/user/default/filament/base/My Base.json`,
     );
+  });
+
+  it('reads system presets once for their details, and user presets on every listing', async () => {
+    const files = new Map([
+      [
+        `${DATA_DIR}/system/BBL/filament/PLA @base.json`,
+        '{"name":"PLA @base","instantiation":"false"}',
+      ],
+      [`${DATA_DIR}/user/default/filament/My PLA.json`, '{"name":"My PLA","inherits":"PLA @base"}'],
+    ]);
+    const fs = memoryFileSystem(files);
+    const reads: string[] = [];
+    const readText = fs.readText.bind(fs);
+    const host = desktopHost({
+      ...fs,
+      readText: (path) => {
+        reads.push(path);
+        return readText(path);
+      },
+    });
+
+    const [mine, base] = await host.listPresets();
+    await host.listPresets();
+
+    expect([base!.details, mine!.details]).toEqual([
+      { selectable: false, printers: [], vendor: 'BBL' },
+      { selectable: true, printers: [], vendor: 'BBL' },
+    ]);
+    expect(reads.filter((path) => path.endsWith('PLA @base.json'))).toHaveLength(1);
+    expect(reads.filter((path) => path.endsWith('My PLA.json'))).toHaveLength(2);
   });
 
   it('reports malformed JSON as invalid-profile', async () => {
@@ -135,6 +166,8 @@ describe('createDesktopHost', () => {
     const host = desktopHost(memoryFileSystem(files));
     const [broken] = await host.listPresets();
 
+    // Listing doesn't fail on it: it lists without details of its own.
+    expect(broken!.details).toEqual({ selectable: true, printers: [] });
     await expect(host.readDocument(broken!)).rejects.toMatchObject({ kind: 'invalid-profile' });
   });
 });

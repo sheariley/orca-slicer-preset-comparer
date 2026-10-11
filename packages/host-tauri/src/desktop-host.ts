@@ -5,6 +5,7 @@ import {
   newPresetInfo,
   orcaPresetVersion,
   orcaSlicerFormat,
+  createDetailsLister,
   serializeProfile,
   type HostCapabilities,
   type PresetRef,
@@ -64,7 +65,7 @@ export function createDesktopHost({
     folder: string,
     type: ProfileType,
     origin: 'system' | 'user',
-    vendor?: string,
+    owner?: string,
   ): Promise<PresetRef[]> {
     const refs: PresetRef[] = [];
     for (const entry of await fs.list(folder)) {
@@ -74,7 +75,8 @@ export function createDesktopHost({
         name: entry.name.slice(0, -'.json'.length),
         type,
         origin,
-        ...(vendor ? { vendor } : {}),
+        // The vendor folder of a system preset, the user folder of a user preset.
+        ...(owner ? (origin === 'system' ? { vendor: owner } : { folder: owner }) : {}),
       });
     }
     return refs;
@@ -99,12 +101,17 @@ export function createDesktopHost({
       if (!user.isDirectory) continue;
       for (const type of EDITABLE_TYPES) {
         const folder = join(userRoot, user.name, type);
-        refs.push(...(await presetsIn(folder, type, 'user')));
-        refs.push(...(await presetsIn(join(folder, 'base'), type, 'user')));
+        refs.push(...(await presetsIn(folder, type, 'user', user.name)));
+        refs.push(...(await presetsIn(join(folder, 'base'), type, 'user', user.name)));
       }
     }
     return refs.sort((a, b) => a.name.localeCompare(b.name));
   }
+
+  // Listing details come from the files themselves (see presetDetails).
+  const listWithDetails = createDetailsLister(
+    async (ref) => JSON.parse(await fs.readText(ref.id)) as unknown,
+  );
 
   /**
    * The user folder OrcaSlicer saves new presets to: the signed-in account's, named in
@@ -156,8 +163,10 @@ export function createDesktopHost({
     newline,
 
     async listPresets(query) {
-      const refs = await scan();
-      return query?.type === undefined ? refs : refs.filter((ref) => ref.type === query.type);
+      const refs = (await scan()).filter(
+        (ref) => query?.type === undefined || ref.type === query.type,
+      );
+      return listWithDetails(refs);
     },
 
     async readDocument(ref) {

@@ -42,6 +42,29 @@ export function describeProfileRepositoryContract(name: string, factory: Reposit
       expect(processes.map((ref) => ref.name)).toEqual(['0.20mm']);
     });
 
+    it('lists what pickers need: whether OrcaSlicer offers a preset, its printers and vendor', async () => {
+      const details = async (presetName: string, vendor?: string) =>
+        (await find(presetName, vendor)).details;
+
+      expect(await details('common', 'VendorA')).toEqual({
+        selectable: false,
+        printers: [],
+        vendor: 'VendorA',
+      });
+      expect(await details('PLA A')).toEqual({
+        selectable: true,
+        printers: ['Printer A 0.4 nozzle'],
+        vendor: 'VendorA',
+      });
+      // A user preset has what it inherits, and the vendor of the system preset it derives from.
+      expect(await details('My PLA')).toEqual({
+        selectable: true,
+        printers: ['Printer A 0.4 nozzle'],
+        vendor: 'VendorA',
+      });
+      expect(await details('My Derived')).toEqual({ selectable: true, printers: [] });
+    });
+
     it("reads a preset's own content without resolving inheritance", async () => {
       const document = await repository.readDocument(await find('PLA A'));
 

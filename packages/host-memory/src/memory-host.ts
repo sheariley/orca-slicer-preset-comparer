@@ -1,6 +1,7 @@
 import {
   ComparerError,
   orcaSlicerFormat,
+  presetDetails,
   serializeProfile,
   type HostCapabilities,
   type ProfileDocument,
@@ -44,10 +45,11 @@ export function createMemoryHost({
     newline,
 
     async listPresets(query) {
-      return [...byId.values()]
-        .map((document) => document.ref)
-        .filter((ref) => query?.type === undefined || ref.type === query.type)
-        .sort((a, b) => a.name.localeCompare(b.name));
+      return presetDetails(
+        [...byId.values()].filter(
+          ({ ref }) => query?.type === undefined || ref.type === query.type,
+        ),
+      ).sort((a, b) => a.name.localeCompare(b.name));
     },
 
     async readDocument(ref) {

@@ -15,6 +15,32 @@ export interface PresetRef {
   readonly origin: PresetOrigin;
   /** Vendor folder for system presets (e.g. "BBL"), when the host knows it. */
   readonly vendor?: string;
+  /**
+   * For user presets, the user folder that holds it (the desktop's `default` or an account
+   * id), when the host knows it: two folders can hold presets with the same name.
+   */
+  readonly folder?: string;
+  /** What pickers filter and label presets by, when the host can tell (see presetDetails). */
+  readonly details?: PresetDetails;
+}
+
+/** A preset's listing details, from its file and the files it inherits from. */
+export interface PresetDetails {
+  /**
+   * False for a system preset OrcaSlicer only uses as a parent or template
+   * (`instantiation: "false"`), which it never offers in its own preset lists.
+   */
+  readonly selectable: boolean;
+  /**
+   * The printers it's for (`compatible_printers`, its own or inherited). Empty: any printer
+   * (OrcaSlicer may still narrow that with `compatible_printers_condition`).
+   */
+  readonly printers: readonly string[];
+  /**
+   * The vendor it belongs to: a system preset's own, or for a user preset, that of the system
+   * preset it derives from. Undefined for user presets that derive from none.
+   */
+  readonly vendor?: string;
 }
 
 /** A raw setting value as stored in a profile file: a string or an array of strings. */

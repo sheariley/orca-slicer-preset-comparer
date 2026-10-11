@@ -1,6 +1,7 @@
 import type { PresetRef } from '@comparer/core';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from '../../components/Dialog.tsx';
+import { InfoTip } from '../../components/InfoTip.tsx';
 import { isBoolean, usePreference } from '../../hooks/usePreference.ts';
 
 interface CommonProps {
@@ -53,12 +54,34 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
     isBoolean,
   );
 
+  // Templates OrcaSlicer never offers (instantiation: "false") stay hidden unless asked for.
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [vendor, setVendor] = useState('');
+  const [printer, setPrinter] = useState('');
+
   const candidates = presets.filter((preset) => preset.id !== exclude?.id);
+  const vendors = sortedUnique(candidates.flatMap((preset) => vendorOf(preset) ?? []));
+  const printers = sortedUnique(candidates.flatMap((preset) => preset.details?.printers ?? []));
+  const hasTemplates = candidates.some((preset) => preset.details?.selectable === false);
+  // Same-named presets (e.g. copies in two user folders) say where each one is.
+  const nameCounts = new Map<string, number>();
+  for (const preset of candidates) {
+    nameCounts.set(preset.name, (nameCounts.get(preset.name) ?? 0) + 1);
+  }
+  const whereabouts = (preset: PresetRef) =>
+    (nameCounts.get(preset.name) ?? 0) > 1 ? placeOf(preset) : undefined;
+
   const needle = text.trim().toLowerCase();
   const shown = candidates
     .filter(
       (preset) =>
         (showSystem || preset.origin !== 'system') &&
+        (showTemplates || preset.details?.selectable !== false) &&
+        (vendor === '' || vendorOf(preset) === vendor) &&
+        // A preset that lists no printers is for any printer.
+        (printer === '' ||
+          !preset.details?.printers.length ||
+          preset.details.printers.includes(printer)) &&
         (needle === '' || preset.name.toLowerCase().includes(needle)),
     )
     .sort((a, b) => {
@@ -128,7 +151,55 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
           />
           Show system presets
         </label>
+        {showSystem && hasTemplates && (
+          <span className="toggle">
+            <label className="toggle">
+              <input
+                type="checkbox"
+                checked={showTemplates}
+                onChange={(event) => setShowTemplates(event.target.checked)}
+              />
+              Show templates
+            </label>
+            <InfoTip
+              subject="templates"
+              content="System presets that OrcaSlicer only uses as parents of other presets (such as @base ones) and never offers in its own lists."
+            />
+          </span>
+        )}
       </div>
+      {(vendors.length > 0 || printers.length > 0) && (
+        <div className="target-filters">
+          {vendors.length > 0 && (
+            <select
+              aria-label="Vendor"
+              value={vendor}
+              onChange={(event) => setVendor(event.target.value)}
+            >
+              <option value="">All vendors</option>
+              {vendors.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
+          {printers.length > 0 && (
+            <select
+              aria-label="Printer"
+              value={printer}
+              onChange={(event) => setPrinter(event.target.value)}
+            >
+              <option value="">All printers</option>
+              {printers.map((name) => (
+                <option key={name} value={name}>
+                  {name}
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
+      )}
       <p className="target-count" role="status">
         {multiple
           ? `${plural(chosenPresets.length, 'preset')} chosen`
@@ -188,7 +259,7 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
                   <input
                     type={multiple ? 'checkbox' : 'radio'}
                     name={multiple ? undefined : radioGroup}
-                    aria-label={`Choose ${preset.name}`}
+                    aria-label={`Choose ${preset.name}${whereabouts(preset) ? ` (${whereabouts(preset)})` : ''}`}
                     checked={selected.has(preset.id)}
                     onChange={(event) => toggle([preset.id], event.target.checked)}
                   />
@@ -197,6 +268,10 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
                   {preset.name}
                   {preset.origin === 'system' && (
                     <span className="badge">{preset.vendor ?? 'System'}</span>
+                  )}
+                  {preset.details?.selectable === false && <span className="badge">Template</span>}
+                  {whereabouts(preset) && preset.origin !== 'system' && (
+                    <span className="badge">{whereabouts(preset)}</span>
                   )}
                 </td>
               </tr>
@@ -207,4 +282,17 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
       </div>
     </Dialog>
   );
+}
+
+/** The vendor a preset belongs to: its own folder's, or the one its system parent is in. */
+const vendorOf = (preset: PresetRef) => preset.details?.vendor ?? preset.vendor;
+
+/** Where a preset lives, to tell it from one with the same name. */
+function placeOf(preset: PresetRef): string {
+  if (preset.origin === 'system') return preset.vendor ?? 'system';
+  return preset.folder ? `${preset.folder} folder` : 'user';
+}
+
+function sortedUnique(values: readonly string[]): string[] {
+  return [...new Set(values)].sort((a, b) => a.localeCompare(b));
 }
