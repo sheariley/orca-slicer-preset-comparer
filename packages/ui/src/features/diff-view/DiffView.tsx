@@ -274,7 +274,7 @@ export function DiffView({
                 checked={hideUnknown}
                 onChange={(event) => setHideUnknown(event.target.checked)}
               />
-              Hide deprecated ({unknownCount})
+              Hide unused ({unknownCount})
             </label>
             <InfoTip
               subject="hidden settings"

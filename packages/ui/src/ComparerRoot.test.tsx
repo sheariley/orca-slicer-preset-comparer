@@ -191,7 +191,7 @@ describe('ComparerRoot', () => {
     const table = await compare(user, 'PLA', 'PETG');
     expect(within(table).queryByText('bambu_only')).not.toBeInTheDocument();
 
-    await user.click(screen.getByLabelText(/Hide deprecated \(1\)/));
+    await user.click(screen.getByLabelText(/Hide unused \(1\)/));
     expect(within(table).getByText('bambu_only')).toBeInTheDocument();
   });
 
