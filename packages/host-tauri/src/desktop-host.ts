@@ -41,7 +41,7 @@ const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [50, 150, 400, 1200];
 
 /**
  * Reads presets from OrcaSlicer's data folder:
- *   system/<Vendor>/<type>/<name>.json        copies of the installed vendor profiles
+ *   system/<Vendor>/<type>/<name>.json        copies of the installed vendor profiles (also in subfolders)
  *   user/<user_id>/<type>/<name>.json         user presets (each with a sibling .info file)
  *   user/<user_id>/<type>/base/<name>.json    user root presets (inherits ""), parents of others
  * <user_id> is "default" when signed out, or the account id when signed in.
@@ -66,9 +66,13 @@ export function createDesktopHost({
     type: ProfileType,
     origin: 'system' | 'user',
     owner?: string,
+    recursive = false,
   ): Promise<PresetRef[]> {
     const refs: PresetRef[] = [];
     for (const entry of await fs.list(folder)) {
+      if (entry.isDirectory && recursive) {
+        refs.push(...(await presetsIn(join(folder, entry.name), type, origin, owner, true)));
+      }
       if (entry.isDirectory || !entry.name.endsWith('.json')) continue;
       refs.push({
         id: join(folder, entry.name),
@@ -87,12 +91,15 @@ export function createDesktopHost({
     for (const vendor of await fs.list(join(dataDir, 'system'))) {
       if (!vendor.isDirectory) continue;
       for (const type of EDITABLE_TYPES) {
+        // Vendors may group their presets in subfolders (OrcaFilamentLibrary keeps its bases in
+        // filament/base/ and most presets in a folder per brand).
         refs.push(
           ...(await presetsIn(
             join(dataDir, 'system', vendor.name, type),
             type,
             'system',
             vendor.name,
+            true,
           )),
         );
       }

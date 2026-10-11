@@ -304,7 +304,7 @@ Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, p
 
 - **Desktop (`host-tauri`):**
   - Reads OrcaSlicer's data folder (`configDir()/OrcaSlicer`):
-    - `system/<Vendor>/<type>/*.json` for system presets. Only the vendors the user installed are there.
+    - `system/<Vendor>/<type>/*.json` for system presets, including subfolders: vendors may group them (OrcaFilamentLibrary keeps its parents in `filament/base/` and most presets in a folder per brand). Only the vendors the user installed are there.
     - `user/<user_id>/<type>/*.json` for user presets.
     - `user/<user_id>/<type>/base/*.json` for user root presets (`inherits: ""`, every setting spelled out).
     - `<user_id>` is `default` when signed out, or the account id when signed in. Both folders can exist, often with copies of the same presets.

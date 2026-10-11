@@ -131,6 +131,35 @@ describe('createDesktopHost', () => {
     );
   });
 
+  it("lists system presets in a vendor's subfolders, and resolves parents there", async () => {
+    const files = new Map([
+      [
+        `${DATA_DIR}/system/OrcaFilamentLibrary/filament/Generic PLA @System.json`,
+        '{"name":"Generic PLA @System","inherits":"fdm_filament_pla"}',
+      ],
+      [
+        `${DATA_DIR}/system/OrcaFilamentLibrary/filament/base/fdm_filament_pla.json`,
+        '{"name":"fdm_filament_pla"}',
+      ],
+      [
+        `${DATA_DIR}/system/OrcaFilamentLibrary/filament/Bambu/Bambu PLA Basic @System.json`,
+        '{"name":"Bambu PLA Basic @System"}',
+      ],
+    ]);
+    const host = desktopHost(memoryFileSystem(files));
+    const presets = await host.listPresets({ type: 'filament' });
+
+    expect(presets.map((ref) => `${ref.name} (${ref.vendor})`)).toEqual([
+      'Bambu PLA Basic @System (OrcaFilamentLibrary)',
+      'fdm_filament_pla (OrcaFilamentLibrary)',
+      'Generic PLA @System (OrcaFilamentLibrary)',
+    ]);
+    const generic = presets.find((ref) => ref.name === 'Generic PLA @System')!;
+    expect((await host.resolveParent(generic, 'fdm_filament_pla'))?.id).toBe(
+      `${DATA_DIR}/system/OrcaFilamentLibrary/filament/base/fdm_filament_pla.json`,
+    );
+  });
+
   it('reads system presets once for their details, and user presets on every listing', async () => {
     const files = new Map([
       [
