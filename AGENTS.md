@@ -23,6 +23,10 @@ OrcaSlicer Profile Comparer: a cross-platform tool for comparing OrcaSlicer **fi
 
 These apply to every host (desktop, plugin, playground). When a rule here conflicts with convenience in code, the rule wins.
 
+### Layout
+
+- **Desktop first.** The comparer is a desktop tool, so design for desktop windows. Layouts should still adapt to smaller windows (e.g. unpin sticky columns below a medium width, 768 px), but phone widths aren't a target and don't need checking.
+
 ### Input and accessibility
 
 - **Every hover interaction needs a touch-friendly alternative.** Touch displays have no hover, so nothing may be reachable only by hovering:
