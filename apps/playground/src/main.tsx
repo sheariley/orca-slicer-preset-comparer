@@ -1,7 +1,7 @@
 // Composition root for the browser playground: the in-memory host seeded with the profile
 // fixtures from packages/core. For fast UI work without Tauri or OrcaSlicer.
 import { createComparerApp } from '@comparer/app';
-import type { ProfileDocument, ProfileType } from '@comparer/core';
+import type { ProfileDocument, ProfileType, SettingsStore } from '@comparer/core';
 import { createMemoryHost } from '@comparer/host-memory';
 import { createSettingCatalog } from '@comparer/setting-catalog';
 import { ComparerRoot } from '@comparer/ui';
@@ -30,9 +30,17 @@ function toDocument([path, content]: [string, Record<string, unknown>]): Profile
   };
 }
 
+/** Preferences in the browser's storage. It can be unavailable (private windows, blocked storage). */
+const browserSettings: SettingsStore = {
+  load: async () =>
+    JSON.parse(localStorage.getItem('comparer-settings') ?? '{}') as Record<string, unknown>,
+  save: async (settings) => localStorage.setItem('comparer-settings', JSON.stringify(settings)),
+};
+
 const app = createComparerApp({
   repository: createMemoryHost({ documents: Object.entries(fixtures).map(toDocument) }),
   catalog: createSettingCatalog(),
+  settings: browserSettings,
 });
 
 createRoot(document.getElementById('root')!).render(

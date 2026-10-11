@@ -108,7 +108,13 @@ export interface CloseGuard {
   close(): void;
 }
 
+/**
+ * The comparer's own preferences (layout, filters, ...), kept by the host: a local file on the
+ * desktop, the plugin config inside OrcaSlicer. Values must survive a JSON round trip.
+ */
 export interface SettingsStore {
+  /** Everything saved so far; {} when nothing is. */
   load(): Promise<Readonly<Record<string, unknown>>>;
+  /** Replaces everything saved with `settings`. */
   save(settings: Readonly<Record<string, unknown>>): Promise<void>;
 }

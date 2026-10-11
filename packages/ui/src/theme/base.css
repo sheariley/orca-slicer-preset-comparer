@@ -5,6 +5,11 @@
   box-sizing: border-box;
 }
 
+/* Elements given `display` below still hide when they carry the hidden attribute. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   margin: 0;
   background: var(--c-bg);
@@ -13,11 +18,100 @@ body {
   font-size: 13px;
 }
 
+/*
+ * The screen fills the window and only the settings table scrolls (.diff-scroll): the header,
+ * pickers, editing toolbar, and filter row stay in view. Every flex level between the screen
+ * and the table needs min-height: 0, or the table pushes it taller instead of scrolling.
+ */
 .comparer {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100vh;
+  height: 100dvh;
   padding: 12px 16px;
+}
+
+.comparison,
+.diff {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.comparison {
+  gap: 12px;
+}
+
+.diff-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+/* Too short a window for fixed areas plus a useful table: let the whole page scroll again. */
+@media (max-height: 420px) {
+  .comparer {
+    height: auto;
+  }
+
+  .comparison,
+  .diff,
+  .diff-scroll {
+    display: block;
+    overflow: visible;
+  }
+}
+
+/* The header and preset pickers, set off from the comparison below by an accent rule. */
+.comparer-top {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid var(--c-accent);
+}
+
+/*
+ * The type tabs share a row with the pickers, lined up with the dropdowns (under their labels).
+ * Narrow windows wrap the pickers onto the next row.
+ */
+.selection {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.selection .pickers,
+.selection .error {
+  flex: 1 1 480px;
+}
+
+.selection-summary {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.collapse-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+/* Too narrow to share the header row: the summary takes a line of its own, under it. */
+@media (max-width: 600px) {
+  .selection-summary {
+    flex-basis: 100%;
+    order: 1;
+    white-space: normal;
+  }
 }
 
 .comparer-header {
@@ -90,6 +184,7 @@ input[type='search'] {
 
 .diff-toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
   margin-bottom: 8px;
@@ -128,6 +223,7 @@ input[type='search'] {
 .diff thead th {
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--c-surface);
 }
 
@@ -305,9 +401,16 @@ input[type='checkbox'] {
 }
 
 .notice {
-  min-height: 1.4em;
   margin: 0;
   color: var(--c-muted);
+}
+
+/*
+ * Empty most of the time: taken out of the layout so it adds no blank line or gaps, but still
+ * rendered, so screen readers announce what appears in it (it's a live region).
+ */
+.notice:empty {
+  position: absolute;
 }
 
 .diff col.select-column {
@@ -448,6 +551,9 @@ button.icon-button:hover {
 
 /* Save results */
 .save-results {
+  flex-shrink: 0;
+  max-height: 35vh;
+  overflow: auto;
   padding: 8px 12px;
   border: 1px solid var(--c-border);
   border-radius: 4px;

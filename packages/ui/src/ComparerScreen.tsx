@@ -1,5 +1,5 @@
 import type { PresetRef, ProfileType } from '@comparer/core';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from './components/Dialog.tsx';
 import { ErrorMessage } from './components/ErrorMessage.tsx';
 import { InfoTip } from './components/InfoTip.tsx';
@@ -7,6 +7,7 @@ import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
 import { PresetPicker } from './features/preset-picker/PresetPicker.tsx';
 import { useAsync } from './hooks/useAsync.ts';
 import { useComparerApp } from './hooks/useComparerApp.ts';
+import { isBoolean, usePreference } from './hooks/usePreference.ts';
 
 const TYPES: readonly { type: ProfileType; label: string }[] = [
   { type: 'filament', label: 'Filament' },
@@ -60,50 +61,88 @@ export function ComparerScreen() {
 
   const presetList = presets.status === 'done' ? presets.value : [];
 
+  // The type tabs and pickers can fold away to a summary line, leaving more room for the table.
+  // Only while comparing: with nothing chosen, they're all there is.
+  const selectionId = useId();
+  const [hidePresets, setHidePresets] = usePreference('layout.hidePresets', false, isBoolean);
+  const comparing = left !== null && right !== null;
+  const collapsed = hidePresets && comparing;
+
   return (
     <div className="comparer">
-      <header className="comparer-header">
-        <h1>Profile Comparer</h1>
-        <div className="type-tabs" role="tablist" aria-label="Profile type">
-          {TYPES.map(({ type: value, label }) => (
-            <button
-              key={value}
-              role="tab"
-              aria-selected={type === value}
-              onClick={() => type !== value && chooseType(value)}
+      <div className="comparer-top">
+        <header className="comparer-header">
+          <h1>Profile Comparer</h1>
+          {collapsed && left && right && (
+            <p className="selection-summary">
+              {TYPES.find((option) => option.type === type)?.label}: <strong>{left.name}</strong> vs{' '}
+              <strong>{right.name}</strong>
+            </p>
+          )}
+          {!app.capabilities.canSave && (
+            <InfoTip
+              subject="read-only mode"
+              content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
             >
-              {label}
+              <span className="badge">Read-only</span>
+            </InfoTip>
+          )}
+          {comparing && (
+            <button
+              type="button"
+              className="collapse-button"
+              aria-expanded={!collapsed}
+              aria-controls={selectionId}
+              onClick={() => setHidePresets(!collapsed)}
+            >
+              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+                <path
+                  d={collapsed ? 'M4 6l4 4 4-4' : 'M4 10l4-4 4 4'}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {collapsed ? 'Show presets' : 'Hide presets'}
             </button>
-          ))}
-        </div>
-        {!app.capabilities.canSave && (
-          <InfoTip
-            subject="read-only mode"
-            content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
-          >
-            <span className="badge">Read-only</span>
-          </InfoTip>
-        )}
-      </header>
+          )}
+        </header>
 
-      {presets.status === 'failed' ? (
-        <ErrorMessage error={presets.error} />
-      ) : (
-        <div className="pickers">
-          <PresetPicker
-            label="Left"
-            presets={presetList}
-            value={left}
-            onChange={(next) => leaveComparison(() => setLeft(next))}
-          />
-          <PresetPicker
-            label="Right"
-            presets={presetList}
-            value={right}
-            onChange={(next) => leaveComparison(() => setRight(next))}
-          />
+        <div id={selectionId} className="selection" hidden={collapsed}>
+          <div className="type-tabs" role="tablist" aria-label="Profile type">
+            {TYPES.map(({ type: value, label }) => (
+              <button
+                key={value}
+                role="tab"
+                aria-selected={type === value}
+                onClick={() => type !== value && chooseType(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {presets.status === 'failed' ? (
+            <ErrorMessage error={presets.error} />
+          ) : (
+            <div className="pickers">
+              <PresetPicker
+                label="Left"
+                presets={presetList}
+                value={left}
+                onChange={(next) => leaveComparison(() => setLeft(next))}
+              />
+              <PresetPicker
+                label="Right"
+                presets={presetList}
+                value={right}
+                onChange={(next) => leaveComparison(() => setRight(next))}
+              />
+            </div>
+          )}
         </div>
-      )}
+      </div>
 
       {session.status === 'loading' && <p className="status">Comparing…</p>}
       {session.status === 'failed' && <ErrorMessage error={session.error} />}

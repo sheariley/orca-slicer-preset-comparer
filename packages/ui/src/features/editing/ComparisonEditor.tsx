@@ -213,7 +213,7 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
   const nextRedo = redoLabel(session);
 
   return (
-    <>
+    <div className="comparison">
       {canEdit && (
         <div className="edit-toolbar" role="group" aria-label="Editing">
           <span className="unsaved-count">
@@ -291,7 +291,7 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
           onCancel={() => setSave({ step: 'idle' })}
         />
       )}
-    </>
+    </div>
   );
 }
 

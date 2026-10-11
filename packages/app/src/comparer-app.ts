@@ -20,6 +20,7 @@ import {
   type PinOverrides,
   type ProfileEdits,
   type CloseGuard,
+  type SettingsStore,
   type TransferPlan,
 } from '@comparer/core';
 import {
@@ -34,6 +35,7 @@ import {
   resolveEdited,
   type EditSession,
 } from './session/session.ts';
+import { createPreferences, type Preferences } from './preferences.ts';
 import { loadPresetDocuments, loadResolved } from './use-cases/load-resolved.ts';
 
 export interface ComparerDependencies {
@@ -41,6 +43,8 @@ export interface ComparerDependencies {
   readonly catalog: SettingCatalog;
   /** The host's window close hook, where it has one. */
   readonly closeGuard?: CloseGuard;
+  /** Where the host keeps the comparer's preferences. Without one, they last the session. */
+  readonly settings?: SettingsStore;
 }
 
 export interface Comparison {
@@ -88,6 +92,8 @@ export interface ComparerApp {
   readonly capabilities: HostCapabilities;
   /** Set when the host can keep its window from closing (to ask about unsaved changes). */
   readonly closeGuard: CloseGuard | undefined;
+  /** The user's preferences (layout, filters, ...). */
+  readonly preferences: Preferences;
   listPresets(query?: PresetQuery): Promise<readonly PresetRef[]>;
   loadResolved(ref: PresetRef): Promise<ResolvedProfile>;
   compare(left: PresetRef, right: PresetRef): Promise<Comparison>;
@@ -123,6 +129,7 @@ export function createComparerApp({
   repository,
   catalog,
   closeGuard,
+  settings,
 }: ComparerDependencies): ComparerApp {
   const resolveOptions = (type: ProfileType): ResolveOptions => ({
     defaults: catalog.defaultsFor(type),
@@ -167,6 +174,7 @@ export function createComparerApp({
   return {
     capabilities: repository.capabilities,
     closeGuard,
+    preferences: createPreferences(settings),
     listPresets: (query) => repository.listPresets(query),
     loadResolved: resolve,
     async compare(leftRef, rightRef) {

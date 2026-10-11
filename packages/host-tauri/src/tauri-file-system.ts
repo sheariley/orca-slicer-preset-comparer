@@ -70,3 +70,8 @@ export function defaultOrcaDataDir(): Promise<string> {
 export function defaultBackupDir(): Promise<string> {
   return appDataDir().then((dir) => join(dir, 'backups'));
 }
+
+/** Where the app keeps its preferences (see fileSettingsStore): its own data folder. */
+export function defaultSettingsPath(): Promise<string> {
+  return appDataDir().then((dir) => join(dir, 'settings.json'));
+}

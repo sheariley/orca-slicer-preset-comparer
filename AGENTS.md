@@ -48,6 +48,8 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 - **Show where every value came from.** Its tooltip (hover, plus the info icon) names the preset that set it. Built-in OrcaSlicer defaults are visually distinct (muted, italic) and say so.
 - **Never silently drop data from the view.** Keys OrcaSlicer ignores (not in the setting catalog) are hidden by default behind a "Hide settings OrcaSlicer doesn't use (N)" toggle that shows the count, never removed outright.
 - **Highlight changed rows** with the `--c-changed` token, including rows set on only one side.
+- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. While comparing, "Hide presets" folds the type tabs and pickers into a one-line summary ("Filament: PLA vs PETG"), and the choice is remembered.
+- **Remember preferences through `usePreference`** (UI) and `ComparerApp.preferences` (app), which sit on the host's `SettingsStore`. They're conveniences: a store that fails or is missing only costs the remembered value, never an error.
 
 ### Picking presets
 
@@ -165,7 +167,8 @@ orca-slicer-profile-comparer/
 │   │   └── src/
 │   │       ├── comparer-app.ts # createComparerApp: the API the UI calls
 │   │       ├── comparer-app.ts # also the editing use cases: openSession, previewCopy, copy, saveChanges
-│   │       ├── use-cases/      # loadChain, loadResolved
+│   │       ├── preferences.ts  # Preferences over the SettingsStore port
+│   │       ├── use-cases/      # loadChain, loadTemplates, loadResolved
 │   │       └── session/        # EditSession: opened presets, edit history, pending edits, undo/redo
 │   │
 │   ├── ui/                     # React; receives the app layer through a provider
@@ -175,7 +178,7 @@ orca-slicer-profile-comparer/
 │   │       ├── ComparerScreen.tsx
 │   │       ├── features/       # preset-picker/, diff-view/, editing/, save-flow/; (planned) bulk-copy/, settings/
 │   │       ├── components/     # shared building blocks: InfoTip, Dialog, ErrorMessage
-│   │       ├── hooks/          # useComparerApp, useAsync
+│   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context
 │   │       └── theme/          # base.css (components), desktop.css and orca.css (token values)
 │   │
@@ -309,7 +312,8 @@ Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, p
     5. It marks the `.info` for cloud sync (`markPresetInfoForSync`), and never creates an `.info` that wasn't there.
     6. It reports `reloadRequired: 'restart'`, because OrcaSlicer keeps presets in memory and doesn't watch the files.
   - **OrcaSlicer's preset lock:** OrcaSlicer guards every user-preset read and write with an OS file lock on `<data folder>/user.lock` (`InstanceLock`: `LockFileEx` on Windows, `flock` elsewhere), held only for each operation, with a 1 s timeout. The app takes the same lock through two Rust commands in `src-tauri/src/lib.rs` (`lock_user_presets` / `unlock_user_presets`, exposed to TypeScript as `tauriPresetLock()`). They use Rust's standard `File::lock`, which makes the same OS calls, and can lock only that one file. If OrcaSlicer holds the lock for over 2 s, the command fails with exactly `"busy"`, which `tauriPresetLock()` turns into a `busy` error, so the save fails (nothing written) instead of proceeding unlocked.
-  - **Write permissions** (`src-tauri/capabilities/default.json`): write and rename only under `$CONFIG/OrcaSlicer/user/**`, remove only `*.tmp` files there, and write/mkdir under `$APPDATA/backups/**`. Never anything under `system/`.
+  - **Write permissions** (`src-tauri/capabilities/default.json`): write and rename only under `$CONFIG/OrcaSlicer/user/**`, remove only `*.tmp` files there, write/mkdir under `$APPDATA/backups/**`, and read/write the preferences file `$APPDATA/settings.json`. Never anything under `system/`.
+  - **Preferences:** `fileSettingsStore` implements core's `SettingsStore` port as one JSON file, `appDataDir()/settings.json` (`defaultSettingsPath()`). A missing or broken file reads as no preferences. The playground keeps them in `localStorage`; the plugin has no store yet, so its preferences last the session.
   - **Closing the window:** `tauriCloseGuard()` implements core's `CloseGuard` port over the window's close-requested event, and `core:window:allow-destroy` lets it close after the UI asked about unsaved changes. The app layer passes it to the UI (`ComparerApp.closeGuard`).
 - **Plugin (`host-orca` + `apps/orca-plugin/python/`):**
   - The Python side reads files with `newline=""`; Python's text mode would turn CRLF into LF and lose the original bytes. It reports `os.name == "nt"` as CRLF for new files.

@@ -235,100 +235,105 @@ export function DiffView({
           </span>
         )}
       </div>
-      <table>
-        <colgroup>
-          {editing && <col className="select-column" />}
-          <col className="setting-column" />
-          <col />
-          {editing && <col className="copy-column" />}
-          <col />
-        </colgroup>
-        <thead>
-          <tr>
-            {editing && (
-              <th scope="col" className="select-cell">
-                <SelectAll editing={editing} keys={rows.map(({ row }) => row.key)} />
-              </th>
-            )}
-            <th scope="col">Setting</th>
-            <ColumnHeader comparison={comparison} side="left" editing={editing} />
-            {editing && (
-              <th scope="col">
-                <span className="visually-hidden">Copy</span>
-              </th>
-            )}
-            <ColumnHeader comparison={comparison} side="right" editing={editing} />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ row, info }) => {
-            const label = info?.label ?? row.key;
-            const name = names.get(row.key) ?? label;
-            const edited = {
-              left: editing?.edited.left.has(row.key) ?? false,
-              right: editing?.edited.right.has(row.key) ?? false,
-            };
-            return (
-              <tr
-                key={row.key}
-                data-status={row.status}
-                data-selected={editing?.selected.has(row.key) || undefined}
-              >
-                {editing && (
-                  <td className="select-cell">
-                    <input
-                      type="checkbox"
-                      aria-label={`Select ${name}`}
-                      checked={editing.selected.has(row.key)}
-                      onChange={(event) => editing.onSelect([row.key], event.target.checked)}
-                    />
-                  </td>
-                )}
-                <th scope="row">
-                  <InfoTip
-                    subject={name}
-                    content={
-                      <RowTip
-                        comparison={comparison}
-                        settingKey={row.key}
-                        description={info?.tooltip}
-                        edited={edited}
-                      />
-                    }
-                  >
-                    <span className="setting-label">{label}</span>
-                  </InfoTip>
-                  {info && info.label !== row.key && <code className="setting-key">{row.key}</code>}
+      {/* The only part that scrolls; the header row stays put (sticky). */}
+      <div className="diff-scroll">
+        <table>
+          <colgroup>
+            {editing && <col className="select-column" />}
+            <col className="setting-column" />
+            <col />
+            {editing && <col className="copy-column" />}
+            <col />
+          </colgroup>
+          <thead>
+            <tr>
+              {editing && (
+                <th scope="col" className="select-cell">
+                  <SelectAll editing={editing} keys={rows.map(({ row }) => row.key)} />
                 </th>
-                <ValueCell
-                  profile={comparison.left}
-                  settingKey={row.key}
-                  value={row.left}
-                  unit={info?.unit}
-                  edited={edited.left}
-                />
-                {editing && (
-                  <CopyCell
-                    editing={editing}
-                    comparison={comparison}
+              )}
+              <th scope="col">Setting</th>
+              <ColumnHeader comparison={comparison} side="left" editing={editing} />
+              {editing && (
+                <th scope="col">
+                  <span className="visually-hidden">Copy</span>
+                </th>
+              )}
+              <ColumnHeader comparison={comparison} side="right" editing={editing} />
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map(({ row, info }) => {
+              const label = info?.label ?? row.key;
+              const name = names.get(row.key) ?? label;
+              const edited = {
+                left: editing?.edited.left.has(row.key) ?? false,
+                right: editing?.edited.right.has(row.key) ?? false,
+              };
+              return (
+                <tr
+                  key={row.key}
+                  data-status={row.status}
+                  data-selected={editing?.selected.has(row.key) || undefined}
+                >
+                  {editing && (
+                    <td className="select-cell">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${name}`}
+                        checked={editing.selected.has(row.key)}
+                        onChange={(event) => editing.onSelect([row.key], event.target.checked)}
+                      />
+                    </td>
+                  )}
+                  <th scope="row">
+                    <InfoTip
+                      subject={name}
+                      content={
+                        <RowTip
+                          comparison={comparison}
+                          settingKey={row.key}
+                          description={info?.tooltip}
+                          edited={edited}
+                        />
+                      }
+                    >
+                      <span className="setting-label">{label}</span>
+                    </InfoTip>
+                    {info && info.label !== row.key && (
+                      <code className="setting-key">{row.key}</code>
+                    )}
+                  </th>
+                  <ValueCell
+                    profile={comparison.left}
                     settingKey={row.key}
-                    label={name}
-                    row={row}
+                    value={row.left}
+                    unit={info?.unit}
+                    edited={edited.left}
                   />
-                )}
-                <ValueCell
-                  profile={comparison.right}
-                  settingKey={row.key}
-                  value={row.right}
-                  unit={info?.unit}
-                  edited={edited.right}
-                />
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-      {rows.length === 0 && <p className="empty">No settings match.</p>}
+                  {editing && (
+                    <CopyCell
+                      editing={editing}
+                      comparison={comparison}
+                      settingKey={row.key}
+                      label={name}
+                      row={row}
+                    />
+                  )}
+                  <ValueCell
+                    profile={comparison.right}
+                    settingKey={row.key}
+                    value={row.right}
+                    unit={info?.unit}
+                    edited={edited.right}
+                  />
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        {rows.length === 0 && <p className="empty">No settings match.</p>}
+      </div>
     </section>
   );
 }

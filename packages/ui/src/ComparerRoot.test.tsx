@@ -1,5 +1,5 @@
 import { createComparerApp } from '@comparer/app';
-import type { ProfileDocument } from '@comparer/core';
+import type { ProfileDocument, SettingsStore } from '@comparer/core';
 import { createMemoryHost } from '@comparer/host-memory';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -16,8 +16,9 @@ const documents = [
   filament('PETG', { nozzle_temperature: ['240'], fan_max_speed: ['100'] }),
 ];
 
-function renderComparer(canSave = false) {
+function renderComparer(canSave = false, settings?: SettingsStore) {
   const app = createComparerApp({
+    ...(settings ? { settings } : {}),
     repository: createMemoryHost({ documents, capabilities: { canSave } }),
     catalog: {
       describe: (key) =>
@@ -113,5 +114,63 @@ describe('ComparerRoot', () => {
   it('marks a host that cannot save as read-only', async () => {
     renderComparer(false);
     expect(await screen.findByText('Read-only')).toBeInTheDocument();
+  });
+
+  describe('hiding the presets', () => {
+    /** A store that keeps what was saved, starting from `saved`. */
+    const memorySettings = (saved: Record<string, unknown> = {}) => {
+      const store = {
+        saved,
+        load: async () => store.saved,
+        save: async (settings: Readonly<Record<string, unknown>>) => {
+          store.saved = { ...settings };
+        },
+      };
+      return store;
+    };
+
+    async function compare(user: ReturnType<typeof userEvent.setup>) {
+      await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
+      await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
+      await screen.findByRole('table');
+    }
+
+    it('folds the type tabs and pickers into a summary line, and back', async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings();
+      renderComparer(false, settings);
+
+      // Nothing to fold away until two presets are chosen.
+      expect(screen.queryByRole('button', { name: 'Hide presets' })).not.toBeInTheDocument();
+      await compare(user);
+
+      const hide = screen.getByRole('button', { name: 'Hide presets' });
+      expect(hide).toHaveAttribute('aria-expanded', 'true');
+      await user.click(hide);
+
+      expect(screen.getByLabelText('Left')).not.toBeVisible();
+      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
+      expect(screen.getByText(/Filament:/)).toHaveTextContent('Filament: PLA vs PETG');
+      expect(screen.getByRole('table')).toBeInTheDocument();
+      expect(settings.saved).toEqual({ 'layout.hidePresets': true });
+
+      const show = screen.getByRole('button', { name: 'Show presets' });
+      expect(show).toHaveAttribute('aria-expanded', 'false');
+      await user.click(show);
+
+      expect(screen.getByLabelText('Left')).toBeVisible();
+      expect(settings.saved).toEqual({ 'layout.hidePresets': false });
+    });
+
+    it('remembers the choice for the next comparison', async () => {
+      const user = userEvent.setup();
+      renderComparer(false, memorySettings({ 'layout.hidePresets': true }));
+
+      // The pickers stay while nothing is compared, then fold away.
+      await compare(user);
+
+      expect(await screen.findByRole('button', { name: 'Show presets' })).toBeInTheDocument();
+      expect(screen.getByLabelText('Left')).not.toBeVisible();
+    });
   });
 });

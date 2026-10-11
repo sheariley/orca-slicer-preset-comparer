@@ -7,3 +7,4 @@ export {
   loadTemplates,
   type PresetDocuments,
 } from './use-cases/load-resolved.ts';
+export { createPreferences, type Preferences } from './preferences.ts';
