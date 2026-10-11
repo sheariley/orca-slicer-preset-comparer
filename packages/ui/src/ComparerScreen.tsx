@@ -5,6 +5,7 @@ import { ErrorMessage } from './components/ErrorMessage.tsx';
 import { InfoTip } from './components/InfoTip.tsx';
 import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
 import { PresetPicker } from './features/preset-picker/PresetPicker.tsx';
+import { TargetPickerDialog } from './features/preset-picker/TargetPickerDialog.tsx';
 import { useAsync } from './hooks/useAsync.ts';
 import { useComparerApp } from './hooks/useComparerApp.ts';
 import { isBoolean, usePreference } from './hooks/usePreference.ts';
@@ -17,35 +18,56 @@ const TYPES: readonly { type: ProfileType; label: string }[] = [
 export function ComparerScreen() {
   const app = useComparerApp();
   const [type, setType] = useState<ProfileType>('filament');
-  const [left, setLeft] = useState<PresetRef | null>(null);
-  const [right, setRight] = useState<PresetRef | null>(null);
+  const [base, setBase] = useState<PresetRef | null>(null);
+  const [targets, setTargets] = useState<readonly PresetRef[]>([]);
+  const [choosingTargets, setChoosingTargets] = useState(false);
 
-  const [dirty, setDirty] = useState(false);
-  // A change of presets waiting for the user to confirm discarding unsaved changes.
-  const [pendingChange, setPendingChange] = useState<{
-    readonly run: () => void;
-    readonly reason: 'presets' | 'close';
-  } | null>(null);
+  // The presets with unsaved changes (ids), as the editor reports them.
+  const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(new Set());
+  const dirty = unsaved.size > 0;
+  // A change waiting for the user to confirm discarding unsaved changes: closing the comparison
+  // or the window, or taking targets with unsaved changes out (`names`).
+  const [pendingChange, setPendingChange] = useState<
+    | { readonly run: () => void; readonly reason: 'presets' | 'close' }
+    | { readonly run: () => void; readonly reason: 'targets'; readonly names: readonly string[] }
+    | null
+  >(null);
 
   // Bumped when saving creates presets, so the pickers list them.
   const [listVersion, setListVersion] = useState(0);
   const presets = useAsync(`${type}:${listVersion}`, () => app.listPresets({ type }));
-  // Bumped whenever the user picks presets: each pick opens a new session. A preset created by
-  // saving takes a system preset's place without one (see onPresetCreated).
+  // Bumped whenever the user picks a base (or type): each opens a new session. Targets open and
+  // close within the session (see ComparisonEditor), and a preset created by saving takes a
+  // system preset's place without a new one (see onPresetCreated).
   const [picks, setPicks] = useState(0);
-  const comparisonKey = left && right ? String(picks) : null;
-  const session = useAsync(comparisonKey, () => app.openSession([left!, right!]));
-  const pick = (side: 'left' | 'right', next: PresetRef | null) =>
+  const comparisonKey = base ? String(picks) : null;
+  const session = useAsync(comparisonKey, () => app.openSession([base!, ...targets]));
+  const pickBase = (next: PresetRef | null) =>
     leaveComparison(() => {
-      (side === 'left' ? setLeft : setRight)(next);
+      setBase(next);
+      setTargets((current) => current.filter((target) => target.id !== next?.id));
       setPicks((count) => count + 1);
+      setUnsaved(new Set());
     });
+  /** Replaces the targets, confirming first if any taken out have unsaved changes. */
+  const changeTargets = (next: readonly PresetRef[]) => {
+    const kept = new Set(next.map((target) => target.id));
+    const losing = targets.filter((target) => !kept.has(target.id) && unsaved.has(target.id));
+    if (losing.length === 0) setTargets(next);
+    else {
+      setPendingChange({
+        run: () => setTargets(next),
+        reason: 'targets',
+        names: losing.map((target) => target.name),
+      });
+    }
+  };
   const onPresetCreated = useCallback((system: PresetRef, created: PresetRef) => {
-    setLeft((current) => (current?.id === system.id ? created : current));
-    setRight((current) => (current?.id === system.id ? created : current));
+    setBase((current) => (current?.id === system.id ? created : current));
+    setTargets((current) => current.map((target) => (target.id === system.id ? created : target)));
     setListVersion((version) => version + 1);
   }, []);
-  const onDirtyChange = useCallback((value: boolean) => setDirty(value), []);
+  const onPendingChange = useCallback((ids: ReadonlySet<string>) => setUnsaved(ids), []);
 
   /** Runs a change that would close the current comparison, confirming first if it has edits. */
   const leaveComparison = (change: () => void) => {
@@ -70,9 +92,10 @@ export function ComparerScreen() {
   const chooseType = (next: ProfileType) =>
     leaveComparison(() => {
       setType(next);
-      setLeft(null);
-      setRight(null);
+      setBase(null);
+      setTargets([]);
       setPicks((count) => count + 1);
+      setUnsaved(new Set());
     });
 
   const presetList = presets.status === 'done' ? presets.value : [];
@@ -81,7 +104,7 @@ export function ComparerScreen() {
   // Only while comparing: with nothing chosen, they're all there is.
   const selectionId = useId();
   const [hidePresets, setHidePresets] = usePreference('layout.hidePresets', false, isBoolean);
-  const comparing = left !== null && right !== null;
+  const comparing = base !== null && targets.length > 0;
   const collapsed = hidePresets && comparing;
 
   return (
@@ -89,10 +112,10 @@ export function ComparerScreen() {
       <div className="comparer-top">
         <header className="comparer-header">
           <h1>Profile Comparer</h1>
-          {collapsed && left && right && (
+          {collapsed && base && (
             <p className="selection-summary">
-              {TYPES.find((option) => option.type === type)?.label}: <strong>{left.name}</strong> vs{' '}
-              <strong>{right.name}</strong>
+              {TYPES.find((option) => option.type === type)?.label}: <strong>{base.name}</strong> vs{' '}
+              <strong>{targets.map((target) => target.name).join(', ')}</strong>
             </p>
           )}
           {!app.capabilities.canSave && (
@@ -143,18 +166,33 @@ export function ComparerScreen() {
             <ErrorMessage error={presets.error} />
           ) : (
             <div className="pickers">
-              <PresetPicker
-                label="Left"
-                presets={presetList}
-                value={left}
-                onChange={(next) => pick('left', next)}
-              />
-              <PresetPicker
-                label="Right"
-                presets={presetList}
-                value={right}
-                onChange={(next) => pick('right', next)}
-              />
+              <PresetPicker label="Base" presets={presetList} value={base} onChange={pickBase} />
+              <div className="picker">
+                <span className="picker-label" id={`${selectionId}-targets`}>
+                  Targets
+                </span>
+                <div className="targets-control">
+                  {/* The targets show as the table's columns, so the button only counts them. */}
+                  <button
+                    type="button"
+                    {...(base === null
+                      ? { 'aria-describedby': `${selectionId}-targets-hint` }
+                      : {})}
+                    // Targets are compared with the base, so the base comes first.
+                    disabled={presets.status !== 'done' || base === null}
+                    onClick={() => setChoosingTargets(true)}
+                  >
+                    {targets.length === 0
+                      ? 'Choose targets'
+                      : `${targets.length} ${targets.length === 1 ? 'target' : 'targets'} chosen`}
+                  </button>
+                  {base === null && (
+                    <span className="targets-hint" id={`${selectionId}-targets-hint`}>
+                      Choose a base preset first
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -166,14 +204,28 @@ export function ComparerScreen() {
         <ComparisonEditor
           key={comparisonKey}
           initial={session.value}
-          left={left!}
-          right={right!}
-          onDirtyChange={onDirtyChange}
+          base={base!}
+          targets={targets}
+          onPendingChange={onPendingChange}
+          onRemoveTarget={(id) => changeTargets(targets.filter((target) => target.id !== id))}
           onPresetCreated={onPresetCreated}
         />
       )}
       {session.status === 'idle' && (
-        <p className="status">Choose two presets to see how they differ.</p>
+        <p className="status">Choose a base preset and the targets to compare it with.</p>
+      )}
+
+      {choosingTargets && base && (
+        <TargetPickerDialog
+          presets={presetList}
+          base={base}
+          chosen={targets}
+          onConfirm={(next) => {
+            setChoosingTargets(false);
+            changeTargets(next);
+          }}
+          onCancel={() => setChoosingTargets(false)}
+        />
       )}
 
       {pendingChange && (
@@ -190,7 +242,6 @@ export function ComparerScreen() {
                 className="danger"
                 onClick={() => {
                   pendingChange.run();
-                  setDirty(false);
                   setPendingChange(null);
                 }}
               >
@@ -202,7 +253,9 @@ export function ComparerScreen() {
           <p>
             {pendingChange.reason === 'close'
               ? 'Closing the window loses the unsaved changes.'
-              : 'Choosing other presets closes this comparison, and its unsaved changes are lost.'}
+              : pendingChange.reason === 'targets'
+                ? `Taking ${pendingChange.names.join(', ')} out of the comparison loses ${pendingChange.names.length === 1 ? 'its' : 'their'} unsaved changes.`
+                : 'Choosing another base preset closes this comparison, and its unsaved changes are lost.'}
           </p>
         </Dialog>
       )}

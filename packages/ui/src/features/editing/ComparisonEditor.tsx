@@ -1,4 +1,5 @@
 import {
+  addToSession,
   canRedoSession,
   canUndoSession,
   pending,
@@ -15,21 +16,28 @@ import { useEffect, useMemo, useState } from 'react';
 import { ErrorMessage } from '../../components/ErrorMessage.tsx';
 import { useAsync } from '../../hooks/useAsync.ts';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
-import { DiffView, type DiffEditing, type Side } from '../diff-view/DiffView.tsx';
+import { DiffView, type DiffEditing } from '../diff-view/DiffView.tsx';
 import { settingNames } from '../diff-view/format.ts';
-import { BulkCopyDialog } from '../bulk-copy/BulkCopyDialog.tsx';
 import { SaveDialog } from '../save-flow/SaveDialog.tsx';
 import { SaveResults } from '../save-flow/SaveResults.tsx';
 import { CopyPreviewDialog, type SingleCopy } from './CopyPreviewDialog.tsx';
-import { skipReasonText } from './skip-reasons.ts';
+import { CopyToTargetsDialog } from './CopyToTargetsDialog.tsx';
 
 interface ComparisonEditorProps {
-  /** The session opened for the two presets. The editor owns it from here on. */
+  /** The session opened for the base (and any targets). The editor owns it from here on. */
   readonly initial: EditSession;
-  readonly left: PresetRef;
-  readonly right: PresetRef;
-  /** Tells the screen whether there are unsaved changes (so it can confirm before leaving). */
-  readonly onDirtyChange: (dirty: boolean) => void;
+  readonly base: PresetRef;
+  /**
+   * The presets compared with the base, in column order. The editor opens new ones in its
+   * session and closes ones taken out (with their unsaved changes: the screen asks first).
+   */
+  readonly targets: readonly PresetRef[];
+  /**
+   * Tells the screen which presets have unsaved changes (so it can confirm before closing them).
+   */
+  readonly onPendingChange: (ids: ReadonlySet<string>) => void;
+  /** Takes a target out of the comparison (from its column header). */
+  readonly onRemoveTarget: (id: string) => void;
   /**
    * A system preset's changes were saved as a new user preset, now open in the session. The
    * screen shows the new preset in place of the system one, without reopening the session.
@@ -48,52 +56,103 @@ type SaveState =
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /**
- * Compares two presets and edits them: copying values in either direction, undo/redo, and
- * saving. All edits live in an EditSession until saved.
+ * Compares a base preset with targets and edits them: copying the selected settings from the
+ * base to the targets (after a preview), undo/redo, and saving. Copies only ever go from the base
+ * to the targets; to copy the other way, choose another base. All edits live in an EditSession
+ * until saved.
  */
 export function ComparisonEditor({
   initial,
-  left,
-  right,
-  onDirtyChange,
+  base,
+  targets,
+  onPendingChange,
+  onRemoveTarget,
   onPresetCreated,
 }: ComparisonEditorProps) {
   const app = useComparerApp();
   const [session, setSession] = useState(initial);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<SingleCopy | null>(null);
-  const [bulk, setBulk] = useState<readonly string[] | null>(null);
+  const [copyToAll, setCopyToAll] = useState<readonly string[] | null>(null);
   const [save, setSave] = useState<SaveState>({ step: 'idle' });
   const [notice, setNotice] = useState('');
   // The names given to new user presets in the last save, so a retry uses them again.
   const [newPresetNames, setNewPresetNames] = useState<ReadonlyMap<string, string>>(new Map());
   // Preset names already in use, for naming new presets; reloaded after each save.
   const [saveCount, setSaveCount] = useState(0);
-  const presetNames = useAsync(`${left.type}:${saveCount}`, () =>
-    app.listPresets({ type: left.type }).then((refs) => new Set(refs.map((ref) => ref.name))),
+  const presetNames = useAsync(`${base.type}:${saveCount}`, () =>
+    app.listPresets({ type: base.type }).then((refs) => new Set(refs.map((ref) => ref.name))),
   );
 
+  // Keep the session's presets in step with the comparison. Presets taken out (and system
+  // presets that saving replaced with new user presets) close as soon as the targets change...
+  const wantedKey = [base.id, ...targets.map((target) => target.id)].join('\n');
+  const [syncedKey, setSyncedKey] = useState(wantedKey);
+  if (syncedKey !== wantedKey) {
+    setSyncedKey(wantedKey);
+    const wanted = new Set(wantedKey.split('\n'));
+    setSession(
+      app.removePresets(
+        session,
+        [...session.presets.keys()].filter((id) => !wanted.has(id)),
+      ),
+    );
+  }
+  // ...and new targets open in the background; until then, their columns wait.
+  const missing = targets.filter((target) => !session.presets.has(target.id));
+  const missingKey = missing.map((target) => target.id).join('\n');
+  const [openError, setOpenError] = useState<{ key: string; error: unknown } | null>(null);
+  useEffect(() => {
+    if (missing.length === 0) return;
+    let current = true;
+    app.openSession(missing).then(
+      (opened) =>
+        current && setSession((state) => addToSession(state, [...opened.presets.values()])),
+      (error: unknown) => current && setOpenError({ key: missingKey, error }),
+    );
+    return () => {
+      current = false;
+    };
+    // `missing` is keyed by its ids.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [app, missingKey]);
+  const opening = missing.length > 0;
+  const openFailed = opening && openError?.key === missingKey ? openError : null;
+
+  const shown = useMemo(
+    () => targets.filter((target) => session.presets.has(target.id)),
+    [targets, session],
+  );
   const comparison = useMemo(
-    () => app.compareEdited(session, left.id, right.id),
-    [app, session, left.id, right.id],
+    () =>
+      app.compareTargets(
+        session,
+        base.id,
+        shown.map((target) => target.id),
+      ),
+    [app, session, base.id, shown],
   );
   const pendingEdits = useMemo(() => pending(session), [session]);
-  const edited = useMemo(() => {
-    const keysOf = (id: string) => {
-      const edits = pendingEdits.find((entry) => entry.target.id === id)?.edits;
-      return new Set([...Object.keys(edits?.set ?? {}), ...(edits?.remove ?? [])]);
-    };
-    return { left: keysOf(left.id), right: keysOf(right.id) };
-  }, [pendingEdits, left.id, right.id]);
+  const edited = useMemo(
+    () =>
+      new Map(
+        pendingEdits.map(({ target, edits }) => [
+          target.id,
+          new Set([...Object.keys(edits.set ?? {}), ...(edits.remove ?? [])]),
+        ]),
+      ),
+    [pendingEdits],
+  );
   const dirty = pendingEdits.length > 0;
+  const pendingKey = pendingEdits.map(({ target }) => target.id).join('\n');
 
-  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(
+    () => onPendingChange(new Set(pendingKey === '' ? [] : pendingKey.split('\n'))),
+    [pendingKey, onPendingChange],
+  );
 
-  const canEdit = app.capabilities.canSave && left.id !== right.id;
   // System presets too: saving puts their changes into new user presets.
-  const canCopyTo: Record<Side, boolean> = { left: canEdit, right: canEdit };
-  const ids: Record<Side, string> = { left: left.id, right: right.id };
-  const other = (side: Side): Side => (side === 'left' ? 'right' : 'left');
+  const canEdit = app.capabilities.canSave;
   const names = useMemo(
     () =>
       settingNames(
@@ -104,7 +163,7 @@ export function ComparisonEditor({
   );
   const labelOf = (key: string) => names.get(key) ?? key;
   const dialogOpen =
-    preview !== null || bulk !== null || save.step === 'confirm' || save.step === 'saving';
+    preview !== null || copyToAll !== null || save.step === 'confirm' || save.step === 'saving';
   /** The selected settings, in the table's order (not the order they were ticked). */
   const selectedKeys = () =>
     comparison.rows.map((row) => row.key).filter((key) => selected.has(key));
@@ -132,30 +191,19 @@ export function ComparisonEditor({
       ? `Copy ${labelOf(keys[0]!)} to ${presetIn(session, target).ref.name}`
       : undefined;
 
-  /** One-click copy of one setting. Asks first only when there's a "Pin override" choice. */
-  const copyOne = (key: string, to: Side) => {
-    const request: SingleCopy = { source: ids[other(to)], target: ids[to], keys: [key] };
-    const targetName = comparison[to].ref.name;
-    const plan = app.previewCopy(session, { ...request, targets: [request.target] }).targets[0]!;
-    if (plan.redundantOverrides.length > 0) {
-      setPreview(request);
-    } else if (plan.changes.length === 0) {
-      const reason = plan.skipped[0]?.reason;
-      setNotice(
-        `Didn't copy ${labelOf(key)}: ${reason ? skipReasonText(reason, targetName) : 'nothing to change.'}`,
-      );
+  /** The selection, from the base to every target: one target's preview, or all of theirs. */
+  const copySelected = () => {
+    if (shown.length === 1) {
+      setPreview({ source: base.id, target: shown[0]!.id, keys: selectedKeys() });
     } else {
-      apply(request, new Map(), copyLabel(request));
+      setCopyToAll(selectedKeys());
     }
   };
 
-  const copySelected = (to: Side) =>
-    setPreview({ source: ids[other(to)], target: ids[to], keys: selectedKeys() });
-
-  const applyBulk = (next: EditSession, label: string) => {
+  const applyToAll = (next: EditSession, label: string) => {
     setSession(next);
     setSelected(new Set());
-    setBulk(null);
+    setCopyToAll(null);
     setNotice(`${label}. Not saved yet.`);
   };
 
@@ -236,12 +284,10 @@ export function ComparisonEditor({
           setSelected(next);
         },
         edited,
-        canCopyTo,
-        onCopy: copyOne,
       }
     : undefined;
 
-  // Every preset with unsaved changes, including bulk-copy targets outside the two columns.
+  // Every preset with unsaved changes.
   const editedCount = pendingEdits.reduce(
     (count, { edits }) => count + Object.keys(edits.set ?? {}).length + (edits.remove ?? []).length,
     0,
@@ -277,25 +323,15 @@ export function ComparisonEditor({
             Redo
           </button>
           <span className="toolbar-separator" />
-          {(['left', 'right'] as const).map((to) => (
-            <button
-              key={to}
-              type="button"
-              onClick={() => copySelected(to)}
-              disabled={selected.size === 0}
-            >
-              {to === 'left' && <span aria-hidden="true">← </span>}
-              Copy selected to {comparison[to].ref.name}
-              {selected.size > 0 && ` (${selected.size})`}
-              {to === 'right' && <span aria-hidden="true"> →</span>}
-            </button>
-          ))}
           <button
             type="button"
-            onClick={() => setBulk(selectedKeys())}
-            disabled={selected.size === 0}
+            onClick={copySelected}
+            disabled={selected.size === 0 || shown.length === 0}
           >
-            Copy selected to other presets…
+            Copy selected to{' '}
+            {shown.length === 1 ? shown[0]!.name : `${plural(shown.length, 'target')}`}
+            {selected.size > 0 && ` (${selected.size})`}
+            <span aria-hidden="true"> →</span>
           </button>
           <span className="toolbar-separator" />
           <button
@@ -304,7 +340,7 @@ export function ComparisonEditor({
             disabled={!dirty}
             onClick={() => setSave({ step: 'confirm' })}
           >
-            Save…
+            Save
           </button>
         </div>
       )}
@@ -323,7 +359,13 @@ export function ComparisonEditor({
       )}
       {save.step === 'error' && <ErrorMessage error={save.error} />}
 
-      <DiffView comparison={comparison} editing={editing} />
+      {openFailed && <ErrorMessage error={openFailed.error} />}
+      {opening && !openFailed && <p className="status">Opening presets…</p>}
+      {targets.length === 0 ? (
+        <p className="status">Choose targets to compare with {base.name}.</p>
+      ) : (
+        <DiffView comparison={comparison} editing={editing} onRemoveTarget={onRemoveTarget} />
+      )}
 
       {preview && (
         <CopyPreviewDialog
@@ -333,15 +375,14 @@ export function ComparisonEditor({
           onCancel={() => setPreview(null)}
         />
       )}
-      {bulk && (
-        <BulkCopyDialog
+      {copyToAll && (
+        <CopyToTargetsDialog
           session={session}
-          left={left}
-          right={right}
-          keys={bulk}
-          nameOf={labelOf}
-          onApply={applyBulk}
-          onCancel={() => setBulk(null)}
+          source={base.id}
+          targets={shown.map((target) => target.id)}
+          keys={copyToAll}
+          onApply={applyToAll}
+          onCancel={() => setCopyToAll(null)}
         />
       )}
       {(save.step === 'confirm' || save.step === 'saving') && (

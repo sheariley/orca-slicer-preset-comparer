@@ -65,7 +65,7 @@ export function SaveDialog({
             onClick={() => onConfirm(names)}
             disabled={saving || previews.length === 0 || blocked}
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? 'Saving' : 'Save'}
           </button>
         </>
       }

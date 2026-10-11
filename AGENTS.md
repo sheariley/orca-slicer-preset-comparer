@@ -1,8 +1,8 @@
 # AGENTS.md
 
-OrcaSlicer Profile Comparer: a cross-platform tool for comparing OrcaSlicer **filament** and **process** profiles in a diff-like view of how their settings differ. It's also an editor. From the diff view, users can copy individual setting values from one profile to another, or bulk-copy settings from one profile to many target profiles at once, and save the changed profiles back to disk. It ships first as a Tauri desktop app and later as an OrcaSlicer plugin, running the same UI and core in both.
+OrcaSlicer Profile Comparer: a cross-platform tool for comparing OrcaSlicer **filament** and **process** profiles in a diff-like view of how their settings differ. It's also an editor. From the diff view, users select settings in a base profile and copy them to one or many target profiles at once, then save the changed profiles back to disk. It ships first as a Tauri desktop app and later as an OrcaSlicer plugin, running the same UI and core in both.
 
-**Status:** comparing works end to end (read-only) in the playground, desktop, and plugin builds, and the desktop app has been checked against a real OrcaSlicer data folder on Windows. Editing works in `core` and `app` (copy, undo/redo, save with a result per target), and the desktop host can save user presets (tested on Windows against a real OrcaSlicer folder, including the conflict check and OrcaSlicer's preset lock). The editing UI covers the first milestone: copying between the two compared presets (one click per row, or the selected rows through a preview with "Pin override"), undo/redo, and saving with a confirmation and per-preset results (with recovery from conflicts and a busy OrcaSlicer), plus a warning before closing with unsaved changes, and bulk copy from either compared preset to many others. Changes to system presets are saved as new user presets that inherit from them.
+**Status:** comparing works end to end (read-only) in the playground, desktop, and plugin builds, and the desktop app has been checked against a real OrcaSlicer data folder on Windows. Editing works in `core` and `app` (copy, undo/redo, save with a result per target), and the desktop host can save user presets (tested on Windows against a real OrcaSlicer folder, including the conflict check and OrcaSlicer's preset lock). The editing UI compares a base preset with any number of targets, one column each: copying the selected rows from the base to the targets through a preview with "Pin override", undo/redo, and saving with a confirmation and per-preset results (with recovery from conflicts and a busy OrcaSlicer), plus a warning before closing with unsaved changes. Changes to system presets are saved as new user presets that inherit from them.
 
 **Open work is tracked in [TASKS.md](TASKS.md).** Check it before starting, and keep it current: add tasks you discover, and mark the ones you finish `[x]`, in the same change.
 
@@ -40,19 +40,21 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 - **Give every control a unique accessible name.** OrcaSlicer reuses short labels (three settings are called "Fan speed"), so names built from a label add the key when another setting shares it (`settingNames` in `diff-view/format.ts`).
 - **Size touch targets for fingers.** Buttons, checkboxes, info icons, and picker rows need a hit area of at least 32 × 32 CSS px (44 × 44 preferred), even when the visible glyph is smaller.
 - **Label every control.** Use a visible `<label>` or an `aria-label`, and semantic roles (`tablist`/`tab`, `table`, `alert`). Component tests query by role and label (React Testing Library), which keeps this honest.
+- **No ellipses in button text** ("Save", not "Save…"). They add nothing.
 - **Support the keyboard.** Every action reachable by mouse or touch must also be reachable by keyboard, with a visible focus indicator.
 
 ### Comparing
 
-- **Side-by-side diff.** Two value columns of equal width next to a setting column, with a sticky header naming both presets. Long values wrap instead of overflowing.
-- **Show only differences by default,** with a toggle that shows everything. The toggle shows the count of differences.
+- **Base and targets side by side.** A setting column, the base preset's values, then one column per target, all value columns of equal width, under a sticky header naming each preset. The table is at least wide enough for every value column (`--targets` in `base.css`), so many targets scroll sideways while the selection, setting, and base columns stay pinned (sticky); below 768 px wide they unpin and scroll with the rest. In a row that differs, a target value that matches the base is muted. Long values wrap instead of overflowing.
+- **Choose targets in the target picker** (`TargetPickerDialog`), once a base is chosen. Its button counts the targets ("3 targets chosen") rather than listing them, since the table's columns name them. The picker is a table of the type's presets (not the base) with a checkbox each and a Name column that sorts from its header, filtered by name and by "Show system presets" (off by default, remembered as `targetPicker.showSystem`). Each target's column header can also take it out of the comparison.
+- **Show only differences by default** (rows where any target differs from the base), with a toggle that shows everything. The toggle shows the count of differences.
 - **Filter by setting name,** matching both OrcaSlicer's label and the raw key.
 - **Label settings the way OrcaSlicer does.** Show OrcaSlicer's label (preferring its full label over the short tab label), and the raw key underneath in a muted monospace style. Show the key only when it differs from the label. Group settings the way OrcaSlicer's tabs do (not built yet).
 - **Render values readably.** Join arrays with commas, show multi-line G-code as multi-line text, and show the unit after a value. Never add a unit to a value that's already a percentage, and drop the "or %" part of units like "mm/s² or %" for plain numbers.
 - **Show where every value came from.** Its tooltip (hover, plus the info icon) names the preset that set it. Built-in OrcaSlicer defaults are visually distinct (muted, italic) and say so.
 - **Never silently drop data from the view.** Keys OrcaSlicer ignores (not in the setting catalog) are hidden by default behind a "Hide settings OrcaSlicer doesn't use (N)" toggle that shows the count, never removed outright.
 - **Highlight changed rows** with the `--c-changed` token, including rows set on only one side.
-- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. While comparing, "Hide presets" folds the type tabs and pickers into a one-line summary ("Filament: PLA vs PETG"), and the choice is remembered.
+- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. While comparing, "Hide presets" folds the type tabs and pickers into a one-line summary ("Filament: PLA vs PETG, ABS"), and the choice is remembered.
 - **Remember preferences through `usePreference`** (UI) and `ComparerApp.preferences` (app), which sit on the host's `SettingsStore`. They're conveniences: a store that fails or is missing only costs the remembered value, never an error.
 
 ### Picking presets
@@ -63,20 +65,18 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 
 ### Editing and bulk copy
 
-- **One-click transfer** of a value in either direction.
+- **Copies go one way: from the base to the targets.** Select settings in the table, then copy them; there are no per-cell copy buttons. To copy the other way, the user makes the other preset the base. (Two-way, one-click copying was removed: with many targets it made the direction of a copy confusing.)
 - **Always show unsaved changes,** offer undo, and confirm before saving.
   - Mark each edited value (accent bar, bold, and "(unsaved)" for screen readers), badge the preset's column, and count the changes in the editing toolbar.
-  - Rows with unsaved changes stay visible under "Only differences", even when a copy made both sides equal.
+  - Rows with unsaved changes stay visible under "Only differences", even when a copy made the values equal.
   - Undo and redo also work from the keyboard (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z; ⌘ on macOS), except while typing in a field.
-  - Confirm before discarding unsaved changes: choosing other presets or another profile type, or closing the window (through the host's `CloseGuard`, where it has one: the desktop app does).
-- **One-click copies ask first only when needed:** when the copy has a "Pin override" choice. A copy that would change nothing says why in the status line (the skip reason) instead of doing nothing silently.
+  - Confirm before discarding unsaved changes: choosing another base preset or profile type, taking targets with unsaved changes out of the comparison, or closing the window (through the host's `CloseGuard`, where it has one: the desktop app does).
 - **Don't offer what can't be saved.** No copy controls on a read-only host. Copies into a system preset are allowed because saving puts them into a new user preset; its column's "System" badge (an `InfoTip`) says so.
 - **Ask about redundant overrides with a "Pin override" checkbox** on each affected setting, in the preview of a copy (see "Writing profiles back"). Its tooltip (an `InfoTip`) explains the trade-off: keeping the override pins the value, so changes to the parent no longer reach it; unchecking re-links it to the parent.
-- **Bulk copy:** pick one or more settings in a source profile and copy them to many targets of the same type in one action.
-  - Choose targets from the preset browser, with multi-select, filters (vendor, printer, user vs. system), and select-all.
+- **Bulk copy is the comparison itself:** select settings in the table and "Copy selected to N targets" copies them from the base to every target in one action, after a preview (`CopyToTargetsDialog`; with one target, `CopyPreviewDialog`).
   - Before applying, preview each target: the current value, the new value, and which targets already match and will be skipped.
-  - Apply the batch as one undoable step, while letting users drop individual targets or settings from it.
-  - Targets open in the editing session (`ComparerApp.addPresets`) without appearing in the two columns, so the toolbar counts every preset with unsaved changes, and saving covers them all.
+  - Apply the batch as one undoable step, while letting users leave out individual targets.
+  - The session holds exactly the base and the targets: the editor opens targets added later (keeping the history) and closes ones taken out (`ComparerApp.removePresets`, which drops their pending edits, after the screen asked).
   - When the batch includes system presets, say which ones in the preview, and ask for the names of their new user presets once, in the save confirmation.
 
 ### Saving and feedback
@@ -171,7 +171,7 @@ orca-slicer-profile-comparer/
 │   ├── app/                    # use cases, built on core + ports
 │   │   └── src/
 │   │       ├── comparer-app.ts # createComparerApp: the API the UI calls
-│   │       ├── comparer-app.ts # also the editing use cases: openSession, addPresets, previewCopy, copy, saveChanges
+│   │       ├── comparer-app.ts # also the editing use cases: openSession, addPresets, removePresets, compareTargets, previewCopy, copy, saveChanges
 │   │       ├── preferences.ts  # Preferences over the SettingsStore port
 │   │       ├── use-cases/      # loadChain, loadTemplates, loadResolved
 │   │       └── session/        # EditSession: opened presets, edit history, pending edits, undo/redo
@@ -181,7 +181,7 @@ orca-slicer-profile-comparer/
 │   │   └── src/
 │   │       ├── ComparerRoot.tsx    # the whole UI; composition roots render this
 │   │       ├── ComparerScreen.tsx
-│   │       ├── features/       # preset-picker/, diff-view/, editing/, save-flow/, bulk-copy/; (planned) settings/
+│   │       ├── features/       # preset-picker/ (incl. the target picker), diff-view/, editing/, save-flow/; (planned) settings/
 │   │       ├── components/     # shared building blocks: InfoTip, Dialog, ErrorMessage
 │   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context

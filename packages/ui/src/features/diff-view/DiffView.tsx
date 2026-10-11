@@ -1,24 +1,20 @@
-import type { Comparison } from '@comparer/app';
+import type { BaseComparison } from '@comparer/app';
 import type { NormalizedValue, ResolvedProfile } from '@comparer/core';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { InfoTip } from '../../components/InfoTip.tsx';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
 import { settingNames, unitFor } from './format.ts';
 
-export type Side = 'left' | 'right';
-
-/** What DiffView needs to offer copying. Without it, the view is read-only. */
+/** What DiffView needs for editing: selecting settings to copy. Without it, the view is read-only. */
 export interface DiffEditing {
   /** Selected setting keys. */
   readonly selected: ReadonlySet<string>;
   readonly onSelect: (keys: readonly string[], selected: boolean) => void;
-  /** Keys with unsaved changes, per side. */
-  readonly edited: Readonly<Record<Side, ReadonlySet<string>>>;
-  /** Whether each side can receive copies (e.g. not a system preset). */
-  readonly canCopyTo: Readonly<Record<Side, boolean>>;
-  /** Copies one setting's value to the given side. */
-  readonly onCopy: (key: string, to: Side) => void;
+  /** Keys with unsaved changes, by preset id. */
+  readonly edited: ReadonlyMap<string, ReadonlySet<string>>;
 }
+
+const NO_KEYS: ReadonlySet<string> = new Set();
 
 /** Where a preset's value for a setting came from, in words. */
 function sourceText(profile: ResolvedProfile, settingKey: string, edited: boolean): string {
@@ -28,25 +24,28 @@ function sourceText(profile: ResolvedProfile, settingKey: string, edited: boolea
   return edited ? `${text} (unsaved change)` : text;
 }
 
-/** A row's tip: the setting's description, then where each side's value came from. */
+/** A row's tip: the setting's description, then where each preset's value came from. */
 function RowTip({
-  comparison,
+  profiles,
   settingKey,
   description,
-  edited,
+  isEdited,
 }: {
-  comparison: Comparison;
+  profiles: readonly ResolvedProfile[];
   settingKey: string;
   description: string | undefined;
-  edited: Readonly<Record<Side, boolean>>;
+  isEdited: (id: string) => boolean;
 }) {
   return (
     <>
       {description && <p>{description}</p>}
       <p>
-        {comparison.left.ref.name}: {sourceText(comparison.left, settingKey, edited.left)}
-        <br />
-        {comparison.right.ref.name}: {sourceText(comparison.right, settingKey, edited.right)}
+        {profiles.map((profile, index) => (
+          <Fragment key={profile.ref.id}>
+            {index > 0 && <br />}
+            {profile.ref.name}: {sourceText(profile, settingKey, isEdited(profile.ref.id))}
+          </Fragment>
+        ))}
       </p>
     </>
   );
@@ -58,76 +57,25 @@ function ValueCell({
   value,
   unit,
   edited,
+  className,
 }: {
   profile: ResolvedProfile;
   settingKey: string;
   value: NormalizedValue | undefined;
   unit: string | undefined;
   edited: boolean;
+  className?: string | undefined;
 }) {
   const isDefault = profile.settings.get(settingKey)?.definedBy === 'default';
   const shownUnit = value && unitFor(value, unit);
-  const classes = [isDefault && 'is-default', edited && 'is-edited'].filter(Boolean).join(' ');
+  const classes = [className, isDefault && 'is-default', edited && 'is-edited']
+    .filter(Boolean)
+    .join(' ');
   return (
     <td className={classes || undefined}>
       {value ? value.join(', ') : '—'}
       {shownUnit && <span className="unit"> {shownUnit}</span>}
       {edited && <span className="visually-hidden"> (unsaved)</span>}
-    </td>
-  );
-}
-
-function ArrowIcon({ to }: { to: Side }) {
-  return (
-    <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-      <path
-        d={to === 'right' ? 'M2 8h11M9 4l4 4-4 4' : 'M14 8H3M7 4L3 8l4 4'}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-/** The copy buttons between the two value columns. */
-function CopyCell({
-  editing,
-  comparison,
-  settingKey,
-  label,
-  row,
-}: {
-  editing: DiffEditing;
-  comparison: Comparison;
-  settingKey: string;
-  label: string;
-  row: Comparison['rows'][number];
-}) {
-  // Nothing to copy when both sides agree, or from a side without a value.
-  const offer = (to: Side) =>
-    editing.canCopyTo[to] &&
-    row.status !== 'same' &&
-    (to === 'right' ? row.left : row.right) !== undefined;
-  return (
-    <td className="copy-cell">
-      {(['right', 'left'] as const).map((to) =>
-        offer(to) ? (
-          <button
-            key={to}
-            type="button"
-            className="icon-button"
-            aria-label={`Copy ${label} to ${comparison[to].ref.name}`}
-            onClick={() => editing.onCopy(settingKey, to)}
-          >
-            <ArrowIcon to={to} />
-          </button>
-        ) : (
-          <span key={to} className="icon-button-placeholder" />
-        ),
-      )}
     </td>
   );
 }
@@ -152,12 +100,19 @@ function SelectAll({ editing, keys }: { editing: DiffEditing; keys: readonly str
   );
 }
 
+/**
+ * The comparison table: a base preset and one column per target. The setting and base columns
+ * stay in view while the targets scroll sideways (on wide enough windows; see base.css).
+ */
 export function DiffView({
   comparison,
   editing,
+  onRemoveTarget,
 }: {
-  comparison: Comparison;
+  comparison: BaseComparison;
   editing?: DiffEditing | undefined;
+  /** Offers to take a target out of the comparison, from its column header. */
+  onRemoveTarget?: ((id: string) => void) | undefined;
 }) {
   const app = useComparerApp();
   const [onlyDifferences, setOnlyDifferences] = useState(true);
@@ -165,6 +120,9 @@ export function DiffView({
   // (e.g. leftovers from Bambu Studio in bundled profiles).
   const [hideUnknown, setHideUnknown] = useState(true);
   const [filter, setFilter] = useState('');
+  const { base, targets } = comparison;
+  const profiles = [base, ...targets];
+  const editedIn = (id: string) => editing?.edited.get(id) ?? NO_KEYS;
 
   const described = useMemo(
     () => comparison.rows.map((row) => ({ row, info: app.describeSetting(row.key) })),
@@ -181,17 +139,16 @@ export function DiffView({
   );
   const unknownCount = described.filter(({ info }) => !info).length;
   const candidates = hideUnknown ? described.filter(({ info }) => info) : described;
-  const differenceCount = candidates.filter(({ row }) => row.status !== 'same').length;
+  const differenceCount = candidates.filter(({ row }) => row.differs).length;
 
   const needle = filter.trim().toLowerCase();
   const rows = candidates
-    // Rows with unsaved changes stay, so a copy that makes both sides equal doesn't hide its row.
+    // Rows with unsaved changes stay, so a copy that makes the values equal doesn't hide its row.
     .filter(
       ({ row }) =>
         !onlyDifferences ||
-        row.status !== 'same' ||
-        editing?.edited.left.has(row.key) ||
-        editing?.edited.right.has(row.key),
+        row.differs ||
+        profiles.some((profile) => editedIn(profile.ref.id).has(row.key)),
     )
     .filter(
       ({ row, info }) =>
@@ -199,6 +156,11 @@ export function DiffView({
         row.key.toLowerCase().includes(needle) ||
         (info?.label.toLowerCase().includes(needle) ?? false),
     );
+
+  // Wide enough for every value column, so many targets scroll sideways instead of squeezing.
+  const tableStyle = {
+    '--targets': targets.length,
+  } as CSSProperties;
 
   return (
     <section className="diff" aria-label="Differences">
@@ -235,49 +197,56 @@ export function DiffView({
           </span>
         )}
       </div>
-      {/* The only part that scrolls; the header row stays put (sticky). */}
+      {/* The only part that scrolls; the header row and first columns stay put (sticky). */}
       <div className="diff-scroll">
-        <table>
+        <table className={editing ? 'is-editing' : undefined} style={tableStyle}>
           <colgroup>
             {editing && <col className="select-column" />}
             <col className="setting-column" />
-            <col />
-            {editing && <col className="copy-column" />}
-            <col />
+            <col className="value-column" />
+            {targets.map((target) => (
+              <col key={target.ref.id} className="value-column" />
+            ))}
           </colgroup>
           <thead>
             <tr>
               {editing && (
-                <th scope="col" className="select-cell">
+                <th scope="col" className="select-cell pinned pin-select">
                   <SelectAll editing={editing} keys={rows.map(({ row }) => row.key)} />
                 </th>
               )}
-              <th scope="col">Setting</th>
-              <ColumnHeader comparison={comparison} side="left" editing={editing} />
-              {editing && (
-                <th scope="col">
-                  <span className="visually-hidden">Copy</span>
-                </th>
-              )}
-              <ColumnHeader comparison={comparison} side="right" editing={editing} />
+              <th scope="col" className="pinned pin-setting">
+                Setting
+              </th>
+              <ColumnHeader
+                profile={base}
+                isBase
+                edited={editedIn(base.ref.id).size > 0}
+                editing={editing !== undefined}
+              />
+              {targets.map((target) => (
+                <ColumnHeader
+                  key={target.ref.id}
+                  profile={target}
+                  edited={editedIn(target.ref.id).size > 0}
+                  editing={editing !== undefined}
+                  onRemove={onRemoveTarget && (() => onRemoveTarget(target.ref.id))}
+                />
+              ))}
             </tr>
           </thead>
           <tbody>
             {rows.map(({ row, info }) => {
               const label = info?.label ?? row.key;
               const name = names.get(row.key) ?? label;
-              const edited = {
-                left: editing?.edited.left.has(row.key) ?? false,
-                right: editing?.edited.right.has(row.key) ?? false,
-              };
               return (
                 <tr
                   key={row.key}
-                  data-status={row.status}
+                  data-status={row.differs ? 'changed' : 'same'}
                   data-selected={editing?.selected.has(row.key) || undefined}
                 >
                   {editing && (
-                    <td className="select-cell">
+                    <td className="select-cell pinned pin-select">
                       <input
                         type="checkbox"
                         aria-label={`Select ${name}`}
@@ -286,15 +255,15 @@ export function DiffView({
                       />
                     </td>
                   )}
-                  <th scope="row">
+                  <th scope="row" className="pinned pin-setting">
                     <InfoTip
                       subject={name}
                       content={
                         <RowTip
-                          comparison={comparison}
+                          profiles={profiles}
                           settingKey={row.key}
                           description={info?.tooltip}
-                          edited={edited}
+                          isEdited={(id) => editedIn(id).has(row.key)}
                         />
                       }
                     >
@@ -305,28 +274,29 @@ export function DiffView({
                     )}
                   </th>
                   <ValueCell
-                    profile={comparison.left}
+                    className="pinned pin-base"
+                    profile={base}
                     settingKey={row.key}
-                    value={row.left}
+                    value={row.base}
                     unit={info?.unit}
-                    edited={edited.left}
+                    edited={editedIn(base.ref.id).has(row.key)}
                   />
-                  {editing && (
-                    <CopyCell
-                      editing={editing}
-                      comparison={comparison}
+                  {targets.map((target, index) => (
+                    <ValueCell
+                      key={target.ref.id}
+                      // In a row that differs, a value that matches the base is muted.
+                      className={
+                        row.differs && row.targets[index]!.status === 'same'
+                          ? 'matches-base'
+                          : undefined
+                      }
+                      profile={target}
                       settingKey={row.key}
-                      label={name}
-                      row={row}
+                      value={row.targets[index]!.value}
+                      unit={info?.unit}
+                      edited={editedIn(target.ref.id).has(row.key)}
                     />
-                  )}
-                  <ValueCell
-                    profile={comparison.right}
-                    settingKey={row.key}
-                    value={row.right}
-                    unit={info?.unit}
-                    edited={edited.right}
-                  />
+                  ))}
                 </tr>
               );
             })}
@@ -338,29 +308,59 @@ export function DiffView({
   );
 }
 
-/** A preset's column header: its name, whether it has unsaved changes, and whether it's a system preset. */
+/**
+ * A preset's column header: its name, whether it has unsaved changes, whether it's a system
+ * preset, and (for a target) a button that takes it out of the comparison.
+ */
 function ColumnHeader({
-  comparison,
-  side,
+  profile,
+  isBase = false,
+  edited,
   editing,
+  onRemove,
 }: {
-  comparison: Comparison;
-  side: Side;
-  editing: DiffEditing | undefined;
+  profile: ResolvedProfile;
+  isBase?: boolean;
+  edited: boolean;
+  editing: boolean;
+  onRemove?: (() => void) | undefined;
 }) {
-  const { ref } = comparison[side];
+  const { ref } = profile;
   return (
-    <th scope="col">
-      {ref.name}
-      {editing && editing.edited[side].size > 0 && <span className="badge">Unsaved</span>}
-      {editing && ref.origin === 'system' && (
-        <InfoTip
-          subject={`${ref.name}, a system preset`}
-          content="A system preset, which OrcaSlicer replaces on updates, so the comparer never changes it. Changes copied into it are saved as a new user preset that inherits from it; you name it when saving."
-        >
-          <span className="badge">System</span>
-        </InfoTip>
-      )}
+    <th scope="col" className={isBase ? 'pinned pin-base' : undefined}>
+      <div className="column-header">
+        <span className="column-name">
+          {ref.name}
+          {isBase && <span className="badge">Base</span>}
+          {edited && <span className="badge">Unsaved</span>}
+          {editing && ref.origin === 'system' && (
+            <InfoTip
+              subject={`${ref.name}, a system preset`}
+              content="A system preset, which OrcaSlicer replaces on updates, so the comparer never changes it. Changes copied into it are saved as a new user preset that inherits from it; you name it when saving."
+            >
+              <span className="badge">System</span>
+            </InfoTip>
+          )}
+        </span>
+        {onRemove && (
+          <button
+            type="button"
+            className="icon-button"
+            aria-label={`Remove ${ref.name} from the comparison`}
+            onClick={onRemove}
+          >
+            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        )}
+      </div>
     </th>
   );
 }

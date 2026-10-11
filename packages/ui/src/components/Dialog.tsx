@@ -19,7 +19,7 @@ interface DialogProps {
   readonly onClose?: () => void;
   /** Where focus starts; by default, the first focusable element. */
   readonly initialFocus?: RefObject<HTMLElement | null>;
-  /** A wider dialog, for content that needs the room (e.g. bulk copy). */
+  /** A wider dialog, for content that needs the room (e.g. choosing targets). */
   readonly wide?: boolean;
 }
 

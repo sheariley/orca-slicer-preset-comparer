@@ -6,15 +6,56 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 import { ComparerRoot } from './ComparerRoot.tsx';
 
-const filament = (name: string, content: Record<string, unknown>): ProfileDocument => ({
-  ref: { id: name, name, type: 'filament', origin: 'user' },
+const filament = (
+  name: string,
+  content: Record<string, unknown>,
+  origin: 'user' | 'system' = 'user',
+): ProfileDocument => ({
+  ref: {
+    id: name,
+    name,
+    type: 'filament',
+    origin,
+    ...(origin === 'system' ? { vendor: 'V' } : {}),
+  },
   content: { name, ...content },
 });
 
 const documents = [
   filament('PLA', { nozzle_temperature: ['210'], fan_max_speed: ['100'], bambu_only: ['1'] }),
   filament('PETG', { nozzle_temperature: ['240'], fan_max_speed: ['100'] }),
+  filament('ABS', { nozzle_temperature: ['250'] }),
+  filament('Generic PLA', { nozzle_temperature: ['215'] }, 'system'),
 ];
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/** The button that opens the target picker: "Choose targets", or how many are chosen. */
+const TARGETS_BUTTON = /^(Choose targets|\d+ targets? chosen)$/;
+
+/** Compares `base` with `targets`, chosen in the target picker. */
+async function compare(user: User, base: string, ...targets: string[]) {
+  await user.selectOptions(await screen.findByLabelText('Base'), base);
+  await user.click(screen.getByRole('button', { name: TARGETS_BUTTON }));
+  const dialog = screen.getByRole('dialog', { name: 'Choose targets' });
+  for (const name of targets) {
+    await user.click(within(dialog).getByRole('checkbox', { name: `Choose ${name}` }));
+  }
+  await user.click(within(dialog).getByRole('button', { name: 'Compare' }));
+  return screen.findByRole('table');
+}
+
+/** A store that keeps what was saved, starting from `saved`. */
+const memorySettings = (saved: Record<string, unknown> = {}) => {
+  const store = {
+    saved,
+    load: async () => store.saved,
+    save: async (settings: Readonly<Record<string, unknown>>) => {
+      store.saved = { ...settings };
+    },
+  };
+  return store;
+};
 
 function renderComparer(canSave = false, settings?: SettingsStore) {
   const app = createComparerApp({
@@ -45,10 +86,7 @@ describe('ComparerRoot', () => {
     const user = userEvent.setup();
     renderComparer();
 
-    await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
-    await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
-
-    const table = await screen.findByRole('table');
+    const table = await compare(user, 'PLA', 'PETG');
     const rows = within(table).getAllByRole('row').slice(1);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent('Nozzle temperature');
@@ -60,8 +98,7 @@ describe('ComparerRoot', () => {
     const user = userEvent.setup();
     renderComparer();
 
-    await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
-    await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
+    await compare(user, 'PLA', 'PETG');
     await user.click(await screen.findByLabelText(/Only differences/));
 
     expect(within(screen.getByRole('table')).getByText('fan_max_speed')).toBeInTheDocument();
@@ -71,8 +108,7 @@ describe('ComparerRoot', () => {
     const user = userEvent.setup();
     renderComparer();
 
-    await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
-    await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
+    await compare(user, 'PLA', 'PETG');
     await user.click(await screen.findByLabelText(/Only differences/));
 
     const row = within(screen.getByRole('table')).getByText('filament_density').closest('tr')!;
@@ -91,8 +127,7 @@ describe('ComparerRoot', () => {
     const user = userEvent.setup();
     renderComparer();
 
-    await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
-    await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
+    await compare(user, 'PLA', 'PETG');
     await user.click(await screen.findByRole('button', { name: 'About Nozzle temperature' }));
 
     expect(screen.getByRole('tooltip')).toHaveTextContent('Temperature after the first layer');
@@ -102,9 +137,7 @@ describe('ComparerRoot', () => {
     const user = userEvent.setup();
     renderComparer();
 
-    await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
-    await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
-    const table = await screen.findByRole('table');
+    const table = await compare(user, 'PLA', 'PETG');
     expect(within(table).queryByText('bambu_only')).not.toBeInTheDocument();
 
     await user.click(screen.getByLabelText(/Hide settings OrcaSlicer doesn't use \(1\)/));
@@ -117,38 +150,20 @@ describe('ComparerRoot', () => {
   });
 
   describe('hiding the presets', () => {
-    /** A store that keeps what was saved, starting from `saved`. */
-    const memorySettings = (saved: Record<string, unknown> = {}) => {
-      const store = {
-        saved,
-        load: async () => store.saved,
-        save: async (settings: Readonly<Record<string, unknown>>) => {
-          store.saved = { ...settings };
-        },
-      };
-      return store;
-    };
-
-    async function compare(user: ReturnType<typeof userEvent.setup>) {
-      await user.selectOptions(await screen.findByLabelText('Left'), 'PLA');
-      await user.selectOptions(screen.getByLabelText('Right'), 'PETG');
-      await screen.findByRole('table');
-    }
-
     it('folds the type tabs and pickers into a summary line, and back', async () => {
       const user = userEvent.setup();
       const settings = memorySettings();
       renderComparer(false, settings);
 
-      // Nothing to fold away until two presets are chosen.
+      // Nothing to fold away until there's a comparison.
       expect(screen.queryByRole('button', { name: 'Hide presets' })).not.toBeInTheDocument();
-      await compare(user);
+      await compare(user, 'PLA', 'PETG');
 
       const hide = screen.getByRole('button', { name: 'Hide presets' });
       expect(hide).toHaveAttribute('aria-expanded', 'true');
       await user.click(hide);
 
-      expect(screen.getByLabelText('Left')).not.toBeVisible();
+      expect(screen.getByLabelText('Base')).not.toBeVisible();
       expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
       expect(screen.getByText(/Filament:/)).toHaveTextContent('Filament: PLA vs PETG');
       expect(screen.getByRole('table')).toBeInTheDocument();
@@ -158,7 +173,7 @@ describe('ComparerRoot', () => {
       expect(show).toHaveAttribute('aria-expanded', 'false');
       await user.click(show);
 
-      expect(screen.getByLabelText('Left')).toBeVisible();
+      expect(screen.getByLabelText('Base')).toBeVisible();
       expect(settings.saved).toEqual({ 'layout.hidePresets': false });
     });
 
@@ -167,10 +182,91 @@ describe('ComparerRoot', () => {
       renderComparer(false, memorySettings({ 'layout.hidePresets': true }));
 
       // The pickers stay while nothing is compared, then fold away.
-      await compare(user);
+      await compare(user, 'PLA', 'PETG');
 
       expect(await screen.findByRole('button', { name: 'Show presets' })).toBeInTheDocument();
-      expect(screen.getByLabelText('Left')).not.toBeVisible();
+      expect(screen.getByLabelText('Base')).not.toBeVisible();
+    });
+  });
+
+  describe('choosing targets', () => {
+    async function openPicker(user: User) {
+      await user.selectOptions(await screen.findByLabelText('Base'), 'PLA');
+      await user.click(screen.getByRole('button', { name: TARGETS_BUTTON }));
+      return screen.getByRole('dialog', { name: 'Choose targets' });
+    }
+    const names = (dialog: HTMLElement) =>
+      within(dialog)
+        .getAllByRole('checkbox', { name: /^Choose (?!all)/ })
+        .map((box) => box.getAttribute('aria-label')!.replace('Choose ', ''));
+
+    it('waits for a base preset before targets can be chosen', async () => {
+      const user = userEvent.setup();
+      renderComparer();
+
+      expect(await screen.findByRole('button', { name: TARGETS_BUTTON })).toBeDisabled();
+      expect(screen.getByText('Choose a base preset first')).toBeInTheDocument();
+      await user.selectOptions(screen.getByLabelText('Base'), 'PLA');
+      expect(screen.getByRole('button', { name: TARGETS_BUTTON })).toBeEnabled();
+    });
+
+    it('lists the user presets by name, without the base, and sorts them from the header', async () => {
+      const user = userEvent.setup();
+      renderComparer();
+      const dialog = await openPicker(user);
+
+      expect(names(dialog)).toEqual(['ABS', 'PETG']);
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      expect(names(dialog)).toEqual(['ABS', 'Generic PLA', 'PETG']);
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      const header = within(dialog).getByRole('columnheader', { name: /Name/ });
+      expect(header).toHaveAttribute('aria-sort', 'ascending');
+      await user.click(within(header).getByRole('button'));
+      expect(header).toHaveAttribute('aria-sort', 'descending');
+      expect(names(dialog)).toEqual(['PETG', 'ABS']);
+    });
+
+    it('filters by name, keeping hidden choices, and chooses all shown at once', async () => {
+      const user = userEvent.setup();
+      renderComparer();
+      const dialog = await openPicker(user);
+
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Choose ABS' }));
+      await user.type(
+        within(dialog).getByRole('searchbox', { name: 'Filter presets by name' }),
+        'pe',
+      );
+      expect(names(dialog)).toEqual(['PETG']);
+      expect(dialog).toHaveTextContent('1 preset chosen (1 not shown)');
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Choose all shown presets' }));
+      expect(dialog).toHaveTextContent('2 presets chosen');
+      await user.click(within(dialog).getByRole('button', { name: 'Compare' }));
+
+      expect(screen.getByRole('button', { name: '2 targets chosen' })).toBeInTheDocument();
+      expect(await screen.findByRole('columnheader', { name: /^PETG/ })).toBeInTheDocument();
+    });
+
+    it('shows system presets on request, and remembers the choice', async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings();
+      renderComparer(false, settings);
+      let dialog = await openPicker(user);
+
+      expect(names(dialog)).not.toContain('Generic PLA');
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      expect(names(dialog)).toContain('Generic PLA');
+      expect(settings.saved).toEqual({ 'targetPicker.showSystem': true });
+
+      // Cancel changes nothing, and the next time the choice holds.
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Choose Generic PLA' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(screen.getByRole('button', { name: 'Choose targets' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: TARGETS_BUTTON }));
+      dialog = screen.getByRole('dialog', { name: 'Choose targets' });
+      expect(within(dialog).getByLabelText('Show system presets')).toBeChecked();
+      expect(
+        within(dialog).getByRole('checkbox', { name: 'Choose Generic PLA' }),
+      ).not.toBeChecked();
     });
   });
 });

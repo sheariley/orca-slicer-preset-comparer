@@ -77,6 +77,19 @@ export function addToSession(
   return { ...session, presets: new Map([...session.presets, ...added]) };
 }
 
+/**
+ * Closes presets in a session (e.g. targets taken out of the comparison). Their pending edits
+ * are dropped: their steps leave the history, and a step that changed only them goes with them.
+ */
+export function removeFromSession(session: EditSession, ids: readonly string[]): EditSession {
+  const open = ids.filter((id) => session.presets.has(id));
+  if (open.length === 0) return session;
+  return {
+    presets: new Map([...session.presets].filter(([id]) => !open.includes(id))),
+    history: open.reduce(withoutTarget, session.history),
+  };
+}
+
 export function presetIn(session: EditSession, id: string): LoadedPreset {
   const preset = session.presets.get(id);
   if (!preset) throw new Error(`Preset ${id} isn't open in this session.`);

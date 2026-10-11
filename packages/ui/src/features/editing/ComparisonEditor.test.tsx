@@ -42,7 +42,7 @@ const documents = [
     print_speed: ['60'],
   }),
   filament('ASA', { nozzle_temperature: ['230'], fan_max_speed: ['60'] }),
-  // Bulk-copy targets: one already matches PLA, one gets left out.
+  // More targets: one already matches PLA, one gets left out.
   filament('TPU', { nozzle_temperature: ['210'], fan_max_speed: ['100'] }),
   filament('Nylon', { nozzle_temperature: ['260'], fan_max_speed: ['40'] }),
 ];
@@ -104,20 +104,56 @@ function fakeCloseGuard() {
   return guard;
 }
 
-async function compare(user: ReturnType<typeof userEvent.setup>, left: string, right: string) {
-  await user.selectOptions(await screen.findByLabelText('Left'), left);
-  await user.selectOptions(screen.getByLabelText('Right'), right);
+type User = ReturnType<typeof userEvent.setup>;
+
+/** The button that opens the target picker: "Choose targets", or how many are chosen. */
+const TARGETS_BUTTON = /^(Choose targets|\d+ targets? chosen)$/;
+
+/** Ticks `names` in the target picker (showing system presets if one is needed). */
+async function chooseTargets(user: User, names: readonly string[]) {
+  await user.click(await screen.findByRole('button', { name: TARGETS_BUTTON }));
+  const dialog = screen.getByRole('dialog', { name: 'Choose targets' });
+  for (const name of names) {
+    const box = () => within(dialog).queryByRole('checkbox', { name: `Choose ${name}` });
+    if (!box()) await user.click(within(dialog).getByLabelText('Show system presets'));
+    await user.click(box()!);
+  }
+  await user.click(within(dialog).getByRole('button', { name: 'Compare' }));
+}
+
+async function compare(user: User, base: string, ...targets: string[]) {
+  await user.selectOptions(await screen.findByLabelText('Base'), base);
+  await chooseTargets(user, targets);
   return screen.findByRole('table');
 }
 
 const rowOf = (label: string) => within(screen.getByRole('table')).getByText(label).closest('tr')!;
 
+/** Selects `labels` in the table and opens the preview of copying them to the targets. */
+async function previewCopy(user: User, ...labels: string[]) {
+  for (const label of labels) {
+    await user.click(screen.getByRole('checkbox', { name: `Select ${label}` }));
+  }
+  await user.click(screen.getByRole('button', { name: /^Copy selected to / }));
+  return screen.getByRole('dialog');
+}
+
+/** Copies `labels` from the base to every target, through the preview. */
+async function copy(user: User, ...labels: string[]) {
+  const dialog = await previewCopy(user, ...labels);
+  await user.click(within(dialog).getByRole('button', { name: /^Copy( to \d+ presets?)?$/ }));
+}
+
 describe('editing', () => {
-  it('copies one setting with one click, marks it unsaved, and undoes and redoes it', async () => {
+  it('copies one setting, marks it unsaved, and undoes and redoes it', async () => {
     const { user } = setup();
     await compare(user, 'PLA', 'PETG');
+    // Copies go only from the base to the targets, through the selection: no per-cell buttons.
+    expect(within(rowOf('Nozzle temperature')).queryAllByRole('button', { name: /^Copy/ })).toEqual(
+      [],
+    );
 
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
+    await copy(user, 'Nozzle temperature');
 
     // Both sides now agree, but the row stays visible because it has unsaved changes.
     const cells = within(rowOf('Nozzle temperature')).getAllByRole('cell');
@@ -170,25 +206,13 @@ describe('editing', () => {
     expect(screen.getByRole('button', { name: /Copy selected to PETG \(4\)/ })).toBeEnabled();
   });
 
-  it('explains a one-click copy that changes nothing', async () => {
-    const { user } = setup();
-    await compare(user, 'PLA', 'PETG');
-
-    await user.click(screen.getByRole('button', { name: 'Copy print_speed to PETG' }));
-
-    expect(screen.getByRole('status')).toHaveTextContent(
-      "Didn't copy print_speed: OrcaSlicer doesn't use this setting in this kind of preset.",
-    );
-    expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
-  });
-
   it('asks whether to pin a redundant override, and saves the choice', async () => {
     const { user, fileText } = setup();
     await compare(user, 'ASA', 'PETG');
 
     // ASA's 230 is what PETG inherits from Generic PETG, so PETG's override would be redundant.
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
-    const dialog = screen.getByRole('dialog', { name: 'Copy 1 setting to PETG' });
+    const dialog = await previewCopy(user, 'Nozzle temperature');
+    expect(dialog).toHaveAccessibleName('Copy 1 setting to PETG');
     const pin = within(dialog).getByRole('checkbox', {
       name: 'Pin override for Nozzle temperature',
     });
@@ -204,7 +228,7 @@ describe('editing', () => {
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Copy' }));
 
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(
       within(screen.getByRole('dialog', { name: 'Save changes' })).getByRole('button', {
         name: 'Save',
@@ -217,9 +241,8 @@ describe('editing', () => {
     const { user, fileText } = setup();
     await compare(user, 'ASA', 'PETG');
 
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
-    await user.click(screen.getByRole('button', { name: 'Copy' }));
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await copy(user, 'Nozzle temperature');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(await fileText('PETG')).not.toContain('nozzle_temperature');
@@ -228,9 +251,9 @@ describe('editing', () => {
   it('saves after a confirmation, and reports the result', async () => {
     const { user, fileText } = setup();
     await compare(user, 'PLA', 'PETG');
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
+    await copy(user, 'Nozzle temperature');
 
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     const dialog = screen.getByRole('dialog', { name: 'Save changes' });
     expect(dialog).toHaveTextContent('PETG: Nozzle temperature');
     expect(dialog).not.toHaveTextContent('(nozzle_temperature)');
@@ -241,17 +264,15 @@ describe('editing', () => {
     expect(results).toHaveTextContent('Saved 1 of 1.');
     expect(await fileText('PETG')).toContain('"210"');
     expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Save…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Save' })).toBeDisabled();
   });
 
   it('tells apart settings that share a label, in the controls and the save confirmation', async () => {
     const { user } = setup();
     await compare(user, 'PLA', 'PETG');
 
-    await user.click(
-      screen.getByRole('button', { name: 'Copy Fan speed (fan_min_speed) to PETG' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await copy(user, 'Fan speed (fan_min_speed)');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     expect(screen.getByRole('dialog', { name: 'Save changes' })).toHaveTextContent(
       'PETG: Fan speed (fan_min_speed)',
@@ -268,8 +289,8 @@ describe('editing', () => {
       },
     }));
     await compare(user, 'PLA', 'PETG');
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await copy(user, 'Nozzle temperature');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     const results = await screen.findByRole('region', { name: 'Save results' });
@@ -288,11 +309,11 @@ describe('editing', () => {
   it('offers to reload a preset that changed on disk, keeping the unsaved changes', async () => {
     const { user, fileText, editElsewhere } = setup();
     await compare(user, 'PLA', 'PETG');
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
+    await copy(user, 'Nozzle temperature');
     // Meanwhile, OrcaSlicer saves PETG with another change.
     await editElsewhere('PETG', '"30"', '"35"');
 
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     const results = await screen.findByRole('region', { name: 'Save results' });
     expect(results).toHaveTextContent('The file changed after it was opened');
@@ -305,7 +326,7 @@ describe('editing', () => {
     expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
     expect(within(rowOf('fan_min_speed')).getAllByRole('cell').at(-1)).toHaveTextContent('35');
 
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByText(/Saved 1 of 1\./)).toBeInTheDocument();
     const text = await fileText('PETG');
@@ -323,8 +344,8 @@ describe('editing', () => {
       },
     }));
     await compare(user, 'PLA', 'PETG');
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await copy(user, 'Nozzle temperature');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     const results = await screen.findByRole('region', { name: 'Save results' });
@@ -340,7 +361,7 @@ describe('editing', () => {
     await compare(user, 'PLA', 'PETG');
     expect(guard.mayClose()).toBe(true);
 
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
+    await copy(user, 'Nozzle temperature');
     let allowed = true;
     act(() => {
       allowed = guard.mayClose();
@@ -359,21 +380,23 @@ describe('editing', () => {
   it('confirms before discarding unsaved changes', async () => {
     const { user } = setup();
     await compare(user, 'PLA', 'PETG');
-    await user.click(screen.getByRole('button', { name: 'Copy Nozzle temperature to PETG' }));
+    await copy(user, 'Nozzle temperature');
 
-    await user.selectOptions(screen.getByLabelText('Left'), 'ASA');
-    await user.click(
-      within(screen.getByRole('dialog', { name: 'Discard unsaved changes?' })).getByRole('button', {
-        name: 'Keep editing',
-      }),
-    );
-    expect(screen.getByLabelText('Left')).toHaveValue('PLA');
+    await user.selectOptions(screen.getByLabelText('Base'), 'ASA');
+    const dialog = screen.getByRole('dialog', { name: 'Discard unsaved changes?' });
+    expect(dialog).toHaveTextContent('Choosing another base preset closes this comparison');
+    await user.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+    expect(screen.getByLabelText('Base')).toHaveValue('PLA');
     expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Left'), 'ASA');
+    await user.selectOptions(screen.getByLabelText('Base'), 'ASA');
     await user.click(screen.getByRole('button', { name: 'Discard changes' }));
-    expect(screen.getByLabelText('Left')).toHaveValue('ASA');
+    expect(screen.getByLabelText('Base')).toHaveValue('ASA');
     expect(await screen.findByText('No unsaved changes')).toBeInTheDocument();
+    // PETG is still a target.
+    expect(
+      within(await screen.findByRole('table')).getByRole('columnheader', { name: /^PETG/ }),
+    ).toBeInTheDocument();
   });
 
   it('saves copies into a system preset as a new user preset, named when saving', async () => {
@@ -381,10 +404,8 @@ describe('editing', () => {
     await compare(user, 'PLA', 'Generic PETG');
     expect(within(screen.getByRole('table')).getByText('System')).toBeInTheDocument();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Copy Nozzle temperature to Generic PETG' }),
-    );
-    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    await copy(user, 'Nozzle temperature');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
     const dialog = screen.getByRole('dialog', { name: 'Save changes' });
     const name = within(dialog).getByRole('textbox', { name: 'New preset name for Generic PETG' });
     expect(name).toHaveValue('Generic PETG - Copy');
@@ -402,38 +423,40 @@ describe('editing', () => {
       'Saved the changes to Generic PETG as a new user preset, "My PETG". Generic PETG itself is unchanged.',
     );
     // The new preset takes the system preset's place, with nothing left unsaved.
-    expect(await screen.findByDisplayValue('My PETG — User')).toBe(screen.getByLabelText('Right'));
+    expect(
+      await within(screen.getByRole('table')).findByRole('columnheader', { name: /^My PETG/ }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('table')).queryByRole('columnheader', { name: /^Generic PETG/ }),
+    ).not.toBeInTheDocument();
     expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
     expect(await fileText('My PETG')).toContain('"inherits": "Generic PETG"');
     expect(await fileText('Generic PETG')).toContain('"230"');
   });
 
-  describe('copying to other presets', () => {
-    async function openBulkCopy(user: ReturnType<typeof userEvent.setup>) {
-      await compare(user, 'PLA', 'PETG');
+  describe('several targets', () => {
+    it('shows a column per target, with each row shown when any target differs', async () => {
+      const { user } = setup();
+      const table = await compare(user, 'PLA', 'ASA', 'TPU');
+
+      const headers = within(table)
+        .getAllByRole('columnheader')
+        .map((cell) => cell.textContent);
+      expect(headers).toEqual(expect.arrayContaining(['PLABase', 'ASA', 'TPU']));
+      // TPU matches PLA, ASA doesn't: the row shows, and TPU's value is muted.
+      const cells = within(rowOf('Nozzle temperature')).getAllByRole('cell');
+      expect(cells.at(-1)).toHaveTextContent('210');
+      expect(cells.at(-1)).toHaveClass('matches-base');
+    });
+
+    it('copies the selection to every target as one step, after a preview of each', async () => {
+      const { user, fileText } = setup();
+      await compare(user, 'PLA', 'PETG', 'ASA', 'TPU', 'Nylon');
       await user.click(screen.getByRole('checkbox', { name: 'Select Nozzle temperature' }));
       await user.click(screen.getByRole('checkbox', { name: 'Select Fan speed (fan_max_speed)' }));
-      await user.click(screen.getByRole('button', { name: 'Copy selected to other presets…' }));
-      return screen.getByRole('dialog', { name: 'Copy 2 settings to other presets' });
-    }
+      await user.click(screen.getByRole('button', { name: 'Copy selected to 4 targets (2)' }));
 
-    it('copies to many presets as one step, after a preview of each', async () => {
-      const { user, fileText } = setup();
-      let dialog = await openBulkCopy(user);
-
-      expect(within(dialog).getByRole('radio', { name: 'Left: PLA' })).toBeChecked();
-      // The source isn't offered as a target.
-      expect(within(dialog).queryByRole('checkbox', { name: /^PLA/ })).not.toBeInTheDocument();
-      await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Origin' }), 'user');
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Select all shown (4)' }));
-      expect(within(dialog).getByRole('checkbox', { name: 'ASA (User)' })).toBeChecked();
-      expect(
-        within(dialog).queryByRole('checkbox', { name: /Generic PETG/ }),
-      ).not.toBeInTheDocument();
-      await user.click(within(dialog).getByRole('button', { name: 'Preview…' }));
-
-      dialog = await screen.findByRole('dialog', { name: 'Copy 2 settings to other presets' });
-      await within(dialog).findByRole('button', { name: 'Back' });
+      const dialog = screen.getByRole('dialog', { name: 'Copy 2 settings from PLA' });
       const target = (name: string) =>
         within(dialog).getByRole('checkbox', { name }).closest('li')!;
       expect(target('ASA')).toHaveTextContent('2 settings change.');
@@ -447,7 +470,7 @@ describe('editing', () => {
 
       // Leave Nylon out.
       await user.click(within(dialog).getByRole('checkbox', { name: 'Nylon' }));
-      expect(dialog).toHaveTextContent('From PLA: 2 of 4 presets will change.');
+      expect(dialog).toHaveTextContent('2 of 4 targets will change.');
       await user.click(within(dialog).getByRole('button', { name: 'Copy to 2 presets' }));
 
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -461,7 +484,7 @@ describe('editing', () => {
       expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Redo: Copy 2 settings to 2 presets' }));
 
-      await user.click(screen.getByRole('button', { name: 'Save…' }));
+      await user.click(screen.getByRole('button', { name: 'Save' }));
       const save = screen.getByRole('dialog', { name: 'Save changes' });
       expect(save).toHaveTextContent('ASA: Nozzle temperature, Fan speed (fan_max_speed)');
       await user.click(within(save).getByRole('button', { name: 'Save' }));
@@ -472,34 +495,55 @@ describe('editing', () => {
       expect(await fileText('Nylon')).toContain('"260"');
     });
 
-    it('lets users pick the source, drop settings, and filter targets, and says which are system presets', async () => {
+    it('says which targets are system presets before copying to them', async () => {
       const { user } = setup();
-      const dialog = await openBulkCopy(user);
+      await compare(user, 'PLA', 'ASA', 'Generic PETG');
+      await user.click(screen.getByRole('checkbox', { name: 'Select Nozzle temperature' }));
+      await user.click(screen.getByRole('button', { name: 'Copy selected to 2 targets (1)' }));
 
-      await user.click(within(dialog).getByRole('radio', { name: 'Right: PETG' }));
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Fan speed (fan_max_speed)' }));
-      expect(dialog).toHaveTextContent('Settings (1 of 2)');
-      await user.type(within(dialog).getByRole('searchbox', { name: 'Filter presets' }), 'generic');
-      expect(within(dialog).getAllByRole('checkbox', { name: / \((User|V)\)$/ })).toHaveLength(1);
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Generic PETG (V)' }));
-      await user.click(within(dialog).getByRole('button', { name: 'Preview…' }));
-
-      const preview = await screen.findByRole('dialog', {
-        name: 'Copy 1 setting to other presets',
-      });
-      await within(preview).findByRole('button', { name: 'Back' });
-      expect(preview).toHaveTextContent(
-        "Generic PETG is a system preset, which can't be changed. When you save, the changes to it go into new user presets",
+      expect(screen.getByRole('dialog', { name: 'Copy 1 setting from PLA' })).toHaveTextContent(
+        "Generic PETG is a system preset, which can't be changed. When you save, its changes go into a new user preset",
       );
-      expect(preview).toHaveTextContent(
-        '1 setting changes. A system preset: saving puts the changes',
-      );
-      expect(within(preview).getByRole('button', { name: 'Copy to 1 preset' })).toBeEnabled();
+    });
 
-      // Back keeps the choices.
-      await user.click(within(preview).getByRole('button', { name: 'Back' }));
-      expect(screen.getByRole('radio', { name: 'Right: PETG' })).toBeChecked();
-      expect(screen.getByRole('checkbox', { name: 'Generic PETG (V)' })).toBeChecked();
+    it('takes a target out of the comparison, asking first if it has unsaved changes', async () => {
+      const { user } = setup();
+      await compare(user, 'PLA', 'ASA', 'Nylon');
+      await copy(user, 'Nozzle temperature');
+      expect(screen.getByText('2 unsaved changes in 2 presets')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Remove ASA from the comparison' }));
+      const dialog = screen.getByRole('dialog', { name: 'Discard unsaved changes?' });
+      expect(dialog).toHaveTextContent(
+        'Taking ASA out of the comparison loses its unsaved changes.',
+      );
+      await user.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
+      expect(screen.getByRole('columnheader', { name: /^ASA/ })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Remove ASA from the comparison' }));
+      await user.click(screen.getByRole('button', { name: 'Discard changes' }));
+      expect(screen.queryByRole('columnheader', { name: /^ASA/ })).not.toBeInTheDocument();
+      expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: '1 target chosen' })).toBeInTheDocument();
+
+      // Without unsaved changes, it goes at once; the base stays open on its own.
+      await user.click(screen.getByRole('button', { name: 'Undo: Copy 1 setting to 2 presets' }));
+      await user.click(screen.getByRole('button', { name: 'Remove Nylon from the comparison' }));
+      expect(screen.getByText('Choose targets to compare with PLA.')).toBeInTheDocument();
+    });
+
+    it('opens targets added later, keeping the unsaved changes', async () => {
+      const { user } = setup();
+      await compare(user, 'PLA', 'ASA');
+      await copy(user, 'Nozzle temperature');
+
+      await chooseTargets(user, ['Nylon']);
+
+      expect(await screen.findByRole('columnheader', { name: /^Nylon/ })).toBeInTheDocument();
+      expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
+      expect(within(rowOf('Nozzle temperature')).getAllByRole('cell').at(-1)).toHaveTextContent(
+        '260',
+      );
     });
   });
 });

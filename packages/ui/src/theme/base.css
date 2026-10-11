@@ -45,6 +45,8 @@ body {
 }
 
 .diff-scroll {
+  /* The containing block of the cells' hidden text, so it can't widen the page past the table. */
+  position: relative;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -202,14 +204,71 @@ input[type='text'] {
   gap: 4px;
 }
 
+/*
+ * A setting column, the base's values, then each target's. The table
+ * is at least wide enough for every value column, so many targets scroll sideways. Cells don't
+ * collapse their borders: sticky cells would leave collapsed borders behind.
+ */
 .diff table {
+  --select-width: 0px;
+  --setting-width: clamp(200px, 24vw, 320px);
+  --value-min-width: 200px;
   width: 100%;
-  border-collapse: collapse;
+  min-width: calc(
+    var(--select-width) + var(--setting-width) + (var(--targets) + 1) * var(--value-min-width)
+  );
+  border-collapse: separate;
+  border-spacing: 0;
   table-layout: fixed;
 }
 
+.diff table.is-editing {
+  --select-width: 40px;
+}
+
+.diff col.select-column {
+  width: var(--select-width);
+}
+
 .diff col.setting-column {
-  width: 34%;
+  width: var(--setting-width);
+}
+
+/* The selection, setting, and base columns stay in view while the targets scroll sideways. */
+.diff .pinned {
+  position: sticky;
+  z-index: 1;
+  background: var(--c-bg);
+}
+
+.diff .pin-select {
+  left: 0;
+}
+
+.diff .pin-setting {
+  left: var(--select-width);
+}
+
+.diff .pin-base {
+  left: calc(var(--select-width) + var(--setting-width));
+  box-shadow: inset -1px 0 0 var(--c-border);
+}
+
+.diff td.pin-base.is-edited {
+  box-shadow:
+    inset 3px 0 0 var(--c-accent),
+    inset -1px 0 0 var(--c-border);
+}
+
+/* Below a medium width, there's no room to pin them: everything scrolls together. */
+@media (max-width: 767px) {
+  .diff tbody .pinned {
+    position: static;
+  }
+
+  .diff thead .pinned {
+    left: auto;
+  }
 }
 
 .diff th,
@@ -224,8 +283,26 @@ input[type='text'] {
 .diff thead th {
   position: sticky;
   top: 0;
-  z-index: 1;
+  z-index: 2;
   background: var(--c-surface);
+}
+
+/* The corner: pinned both ways, above everything that scrolls under it. */
+.diff thead th.pinned {
+  z-index: 3;
+  background: var(--c-surface);
+}
+
+.column-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.column-header .icon-button {
+  flex-shrink: 0;
+  margin: -6px -4px -6px 0;
 }
 
 .diff tbody th {
@@ -248,8 +325,14 @@ input[type='text'] {
  */
 .diff tbody tr[data-selected] .unit,
 .diff tbody tr[data-selected] .setting-key,
-.diff tbody tr[data-selected] td.is-default {
+.diff tbody tr[data-selected] td.is-default,
+.diff tbody tr[data-selected] td.matches-base {
   color: var(--c-fg);
+}
+
+/* In a row that differs, a target value that's the same as the base's (selected rows excepted). */
+.diff tbody tr[data-status='changed']:not([data-selected]) td.matches-base {
+  color: var(--c-muted);
 }
 
 /* A built-in default rather than a value any preset in the chain sets. */
@@ -414,14 +497,6 @@ input[type='checkbox'] {
   position: absolute;
 }
 
-.diff col.select-column {
-  width: 40px;
-}
-
-.diff col.copy-column {
-  width: 76px;
-}
-
 .diff .select-cell {
   text-align: center;
 }
@@ -431,14 +506,7 @@ input[type='checkbox'] {
   margin: 4px;
 }
 
-.diff td.copy-cell {
-  padding: 0 4px;
-  white-space: nowrap;
-  text-align: center;
-}
-
-button.icon-button,
-.icon-button-placeholder {
+button.icon-button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -446,9 +514,6 @@ button.icon-button,
   height: 32px;
   padding: 0;
   vertical-align: middle;
-}
-
-button.icon-button {
   border-color: transparent;
   background: transparent;
   color: var(--c-muted);
@@ -578,89 +643,138 @@ button.icon-button:hover {
   gap: 8px;
 }
 
-/* Bulk copy */
+/* Wide dialogs: choosing targets, and copying to them */
 .dialog.dialog-wide {
   width: min(960px, 100%);
 }
 
-.dialog fieldset {
-  min-width: 0;
-  margin: 0 0 12px;
-  padding: 8px 12px;
-  border: 1px solid var(--c-border);
-  border-radius: 4px;
-}
-
-.dialog legend {
-  padding: 0 4px;
+/* Choosing targets */
+.picker-label {
   color: var(--c-muted);
+  font-size: 12px;
 }
 
-.dialog fieldset > .toggle {
-  min-height: 32px;
-}
-
-.bulk-choose {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 0 12px;
-}
-
-.check-list {
-  max-height: 200px;
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  list-style: none;
-}
-
-/* Each row is a 32 px hit area for touch. */
-.check-list .toggle {
-  min-height: 32px;
+.targets-control {
+  display: flex;
+  align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
-.check-list.target-list {
-  max-height: 260px;
+.targets-control button {
+  flex-shrink: 0;
 }
 
-.check-list .origin {
+.targets-hint {
   color: var(--c-muted);
 }
 
 .target-filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 4px;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 8px;
 }
 
 .target-filters input[type='search'] {
-  flex: 1 1 200px;
+  flex: 1 1 240px;
+  min-height: 32px;
 }
 
-.select-all {
+.target-filters .toggle {
   min-height: 32px;
   gap: 8px;
-  border-bottom: 1px solid var(--c-border);
 }
 
-.bulk-targets {
+.dialog-body .target-count {
+  color: var(--c-muted);
+}
+
+.target-table-scroll {
+  max-height: min(50vh, 420px);
+  margin-bottom: 8px;
+  overflow: auto;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+}
+
+.target-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  table-layout: fixed;
+}
+
+.target-table col.select-column {
+  width: 44px;
+}
+
+.target-table th,
+.target-table td {
+  padding: 2px 8px;
+  border-bottom: 1px solid var(--c-border);
+  text-align: left;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.target-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--c-surface);
+}
+
+.target-table .select-cell {
+  text-align: center;
+}
+
+/* A 32 × 32 px hit area around the 16 px checkbox. */
+.target-table .select-cell input {
+  margin: 8px;
+}
+
+.target-table tbody tr[data-selected] > * {
+  background: var(--c-changed);
+}
+
+.target-table .badge {
+  margin-left: 6px;
+}
+
+button.sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 4px;
+  margin-left: -4px;
+  border: 0;
+  background: transparent;
+  font-weight: 600;
+}
+
+button.sort-button:hover {
+  color: var(--c-accent);
+}
+
+/* Copying the selection to every target */
+.copy-targets {
   margin: 0 0 8px;
   padding: 0;
   list-style: none;
 }
 
-.bulk-targets > li {
+.copy-targets > li {
   padding: 6px 0;
   border-bottom: 1px solid var(--c-border);
 }
 
-.bulk-targets > li[data-included='false'] .bulk-target-status {
+.copy-targets > li[data-included='false'] .copy-target-status {
   color: var(--c-muted);
 }
 
-.bulk-target-head {
+.copy-target-head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -668,30 +782,18 @@ button.icon-button:hover {
   min-height: 32px;
 }
 
-.bulk-target-head .toggle {
+.copy-target-head .toggle {
   gap: 8px;
 }
 
-.bulk-targets summary {
+.copy-targets summary {
   min-height: 32px;
   padding: 6px 0;
   color: var(--c-accent);
   cursor: pointer;
 }
 
-.bulk-targets summary:focus-visible {
-  outline: 2px solid var(--c-accent);
-  outline-offset: 2px;
-}
-
-input[type='radio'] {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--c-accent);
-}
-
-input[type='radio']:focus-visible {
+.copy-targets summary:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
 }

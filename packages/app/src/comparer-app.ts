@@ -1,6 +1,7 @@
 import {
   ComparerError,
   applyEdits,
+  diffAgainstBase,
   diffProfiles,
   isComparerError,
   newUserPresetContent,
@@ -9,6 +10,7 @@ import {
   resolveChain,
   serializeProfile,
   suggestedPresetName,
+  type BaseDiffRow,
   type DiffRow,
   type HostCapabilities,
   type PresetQuery,
@@ -36,6 +38,7 @@ import {
   presetIn,
   recordBatch,
   reloadPreset,
+  removeFromSession,
   resolveEdited,
   savedAsNewPreset,
   type EditSession,
@@ -56,6 +59,14 @@ export interface Comparison {
   readonly left: ResolvedProfile;
   readonly right: ResolvedProfile;
   readonly rows: readonly DiffRow[];
+}
+
+/** A base preset compared with each of several targets (see core's diffAgainstBase). */
+export interface BaseComparison {
+  readonly base: ResolvedProfile;
+  /** In the order asked for. */
+  readonly targets: readonly ResolvedProfile[];
+  readonly rows: readonly BaseDiffRow[];
 }
 
 /** Copy `keys` from one open preset to one or more others (all ids of presets in the session). */
@@ -132,8 +143,12 @@ export interface ComparerApp {
    * keep their state, and so does the history.
    */
   addPresets(session: EditSession, refs: readonly PresetRef[]): Promise<EditSession>;
+  /** Closes presets in a session, dropping their pending edits (see removeFromSession). */
+  removePresets(session: EditSession, ids: readonly string[]): EditSession;
   /** Compares two open presets as they currently stand, pending edits included. */
   compareEdited(session: EditSession, left: string, right: string): Comparison;
+  /** Compares an open base preset with open targets, as they currently stand. */
+  compareTargets(session: EditSession, base: string, targets: readonly string[]): BaseComparison;
   /** What a copy would do, without recording it (for previews and "Pin override" choices). */
   previewCopy(session: EditSession, request: CopyRequest): TransferPlan;
   /** Plans a copy and records it as one undoable step. */
@@ -171,6 +186,9 @@ export function createComparerApp({
     perVariant: catalog.keyRules(type).perVariant,
   });
   const resolve = (ref: PresetRef) => loadResolved(repository, ref, resolveOptions(ref.type));
+  /** An open preset in its current, edited state. */
+  const resolveOpen = (session: EditSession, id: string) =>
+    resolveEdited(session, id, resolveOptions(presetIn(session, id).ref.type));
 
   const plan = (session: EditSession, request: CopyRequest): TransferPlan => {
     const source = presetIn(session, request.source).ref;
@@ -259,18 +277,18 @@ export function createComparerApp({
       );
     },
 
+    removePresets: removeFromSession,
+
     compareEdited(session, leftId, rightId) {
-      const left = resolveEdited(
-        session,
-        leftId,
-        resolveOptions(presetIn(session, leftId).ref.type),
-      );
-      const right = resolveEdited(
-        session,
-        rightId,
-        resolveOptions(presetIn(session, rightId).ref.type),
-      );
+      const left = resolveOpen(session, leftId);
+      const right = resolveOpen(session, rightId);
       return { left, right, rows: diffProfiles(left, right) };
+    },
+
+    compareTargets(session, baseId, targetIds) {
+      const base = resolveOpen(session, baseId);
+      const targets = targetIds.map((id) => resolveOpen(session, id));
+      return { base, targets, rows: diffAgainstBase(base, targets) };
     },
 
     previewCopy: plan,

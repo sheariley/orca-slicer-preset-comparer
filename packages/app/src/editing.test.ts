@@ -107,6 +107,57 @@ describe('editing session', () => {
     expect(rows.find((row) => row.key === 'fan_max_speed')?.status).toBe('changed');
   });
 
+  it('compares a base with several targets as they currently stand', async () => {
+    const { app, refs } = setup({ extra: [user('ASA', { nozzle_temperature: ['210'] })] });
+    const session = await app.openSession(await refs('PLA', 'PETG', 'ASA'));
+    const { session: edited } = app.copy(session, {
+      source: 'PLA',
+      targets: ['PETG'],
+      keys: ['fan_max_speed'],
+    });
+
+    const comparison = app.compareTargets(edited, 'PLA', ['PETG', 'ASA']);
+    const row = (key: string) => comparison.rows.find((candidate) => candidate.key === key)!;
+
+    expect(comparison.targets.map((target) => target.ref.name)).toEqual(['PETG', 'ASA']);
+    expect(row('nozzle_temperature').targets.map((cell) => cell.status)).toEqual([
+      'changed',
+      'same',
+    ]);
+    expect(row('fan_max_speed')).toMatchObject({
+      base: ['100'],
+      targets: [
+        { value: ['100'], status: 'same' },
+        { value: undefined, status: 'left-only' },
+      ],
+      differs: true,
+    });
+  });
+
+  it('closes presets, dropping only their pending edits', async () => {
+    const { app, refs } = setup({ extra: [user('ASA', {})] });
+    const session = await app.openSession(await refs('PLA', 'PETG', 'ASA'));
+    const both = app.copy(session, {
+      source: 'PLA',
+      targets: ['PETG', 'ASA'],
+      keys: ['fan_max_speed'],
+    }).session;
+    const edited = app.copy(both, {
+      source: 'PLA',
+      targets: ['ASA'],
+      keys: ['nozzle_temperature'],
+    }).session;
+
+    const closed = app.removePresets(edited, ['ASA']);
+
+    expect([...closed.presets.keys()]).toEqual(['PLA', 'PETG']);
+    expect(pending(closed).map(({ target }) => target.name)).toEqual(['PETG']);
+    expect(closed.history.done.map((batch) => batch.label)).toEqual([
+      'Copy 1 setting to PETG, ASA',
+    ]);
+    expect(app.removePresets(closed, ['ASA'])).toBe(closed);
+  });
+
   it('lets edits to an open parent reach its children', async () => {
     const child = user('PETG Fast', { inherits: 'PETG' });
     const { app, refs } = setup({ extra: [child] });
