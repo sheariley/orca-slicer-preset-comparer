@@ -27,9 +27,24 @@ export function ComparerScreen() {
     readonly reason: 'presets' | 'close';
   } | null>(null);
 
-  const presets = useAsync(type, () => app.listPresets({ type }));
-  const comparisonKey = left && right ? `${left.id}\u0000${right.id}` : null;
+  // Bumped when saving creates presets, so the pickers list them.
+  const [listVersion, setListVersion] = useState(0);
+  const presets = useAsync(`${type}:${listVersion}`, () => app.listPresets({ type }));
+  // Bumped whenever the user picks presets: each pick opens a new session. A preset created by
+  // saving takes a system preset's place without one (see onPresetCreated).
+  const [picks, setPicks] = useState(0);
+  const comparisonKey = left && right ? String(picks) : null;
   const session = useAsync(comparisonKey, () => app.openSession([left!, right!]));
+  const pick = (side: 'left' | 'right', next: PresetRef | null) =>
+    leaveComparison(() => {
+      (side === 'left' ? setLeft : setRight)(next);
+      setPicks((count) => count + 1);
+    });
+  const onPresetCreated = useCallback((system: PresetRef, created: PresetRef) => {
+    setLeft((current) => (current?.id === system.id ? created : current));
+    setRight((current) => (current?.id === system.id ? created : current));
+    setListVersion((version) => version + 1);
+  }, []);
   const onDirtyChange = useCallback((value: boolean) => setDirty(value), []);
 
   /** Runs a change that would close the current comparison, confirming first if it has edits. */
@@ -57,6 +72,7 @@ export function ComparerScreen() {
       setType(next);
       setLeft(null);
       setRight(null);
+      setPicks((count) => count + 1);
     });
 
   const presetList = presets.status === 'done' ? presets.value : [];
@@ -131,13 +147,13 @@ export function ComparerScreen() {
                 label="Left"
                 presets={presetList}
                 value={left}
-                onChange={(next) => leaveComparison(() => setLeft(next))}
+                onChange={(next) => pick('left', next)}
               />
               <PresetPicker
                 label="Right"
                 presets={presetList}
                 value={right}
-                onChange={(next) => leaveComparison(() => setRight(next))}
+                onChange={(next) => pick('right', next)}
               />
             </div>
           )}
@@ -153,6 +169,7 @@ export function ComparerScreen() {
           left={left!}
           right={right!}
           onDirtyChange={onDirtyChange}
+          onPresetCreated={onPresetCreated}
         />
       )}
       {session.status === 'idle' && (

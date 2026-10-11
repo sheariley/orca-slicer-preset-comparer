@@ -35,6 +35,20 @@ export function redo(history: EditHistory): EditHistory {
   return { done: [...history.done, next], undone: rest };
 }
 
+/**
+ * The history without one target's changes, done and undone, e.g. once they've been saved
+ * somewhere else (a system preset's changes saved as a new user preset). Batches left with no
+ * targets are dropped.
+ */
+export function withoutTarget(history: EditHistory, id: string): EditHistory {
+  const strip = (batches: readonly EditBatch[]) =>
+    batches.flatMap((batch) => {
+      const targets = batch.plan.targets.filter((plan) => plan.target.id !== id);
+      return targets.length === 0 ? [] : [{ ...batch, plan: { ...batch.plan, targets } }];
+    });
+  return { done: strip(history.done), undone: strip(history.undone) };
+}
+
 export const canUndo = (history: EditHistory) => history.done.length > 0;
 export const canRedo = (history: EditHistory) => history.undone.length > 0;
 

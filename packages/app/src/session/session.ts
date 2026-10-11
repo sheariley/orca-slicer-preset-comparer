@@ -19,6 +19,7 @@ import {
   type ProfileDocument,
   type ResolvedProfile,
   type ResolveOptions,
+  withoutTarget,
 } from '@comparer/core';
 
 /**
@@ -207,6 +208,19 @@ export function reloadPreset(session: EditSession, { chain, templates }: PresetF
     ]),
   );
   return { ...session, presets };
+}
+
+/**
+ * Records that a system preset's pending changes were saved as a new user preset (`created`).
+ * They leave the history, so the system preset is back to what its file holds (and undo no
+ * longer reaches them: the new file exists either way), and the new preset opens in the session.
+ */
+export function savedAsNewPreset(
+  session: EditSession,
+  systemId: string,
+  created: PresetFiles & { readonly ref: PresetRef },
+): EditSession {
+  return addToSession({ ...session, history: withoutTarget(session.history, systemId) }, [created]);
 }
 
 /**

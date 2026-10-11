@@ -8,6 +8,7 @@ const HINTS: Record<string, string> = {
   unsupported: 'This action is not available here yet.',
   conflict: 'The file changed after it was opened (for example, OrcaSlicer saved it).',
   busy: 'OrcaSlicer is busy with its presets. Wait a moment, then try again.',
+  'name-taken': 'Another preset already has this name. Choose a different one.',
 };
 
 export function ErrorMessage({ error }: { error: unknown }) {

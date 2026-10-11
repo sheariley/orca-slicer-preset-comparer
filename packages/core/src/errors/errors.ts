@@ -12,6 +12,8 @@ export type ComparerErrorKind =
   | 'conflict'
   /** Another program (OrcaSlicer) holds the lock on the files for too long; worth retrying. */
   | 'busy'
+  /** A new preset's name is already used by another preset of the same type. */
+  | 'name-taken'
   | 'host-error';
 
 export class ComparerError extends Error {

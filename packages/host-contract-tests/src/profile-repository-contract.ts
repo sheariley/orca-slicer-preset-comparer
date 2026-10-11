@@ -117,5 +117,45 @@ export function describeProfileRepositoryContract(name: string, factory: Reposit
       ).rejects.toSatisfy((error) => isComparerError(error) && error.kind === 'conflict');
       expect((await repository.readDocument(document.ref)).text).toBe(document.text);
     });
+
+    it('creates a user preset that lists, reads, and resolves its parent like any other', async () => {
+      const parent = await find('PLA A');
+      const request = {
+        type: 'filament' as const,
+        name: 'PLA A - Copy',
+        content: { name: 'PLA A - Copy', inherits: 'PLA A', from: 'User', fan_max_speed: ['80'] },
+        parent,
+      };
+      if (!repository.capabilities.canSave) {
+        await expect(repository.createPreset(request)).rejects.toSatisfy(
+          (error) => isComparerError(error) && error.kind === 'unsupported',
+        );
+        return;
+      }
+
+      const { ref } = await repository.createPreset(request);
+
+      expect(ref).toMatchObject({ name: 'PLA A - Copy', type: 'filament', origin: 'user' });
+      expect((await repository.listPresets()).map((preset) => preset.id)).toContain(ref.id);
+      const created = await repository.readDocument(ref);
+      expect(created.content).toMatchObject(request.content);
+      // OrcaSlicer's format for new files: sorted keys, one tab per level, a final newline.
+      expect(created.text).toMatch(new RegExp(`^\\{${repository.newline}\\t"fan_max_speed"`));
+      expect(created.text!.endsWith(`}${repository.newline}`)).toBe(true);
+      expect((await repository.resolveParent(ref, 'PLA A'))?.id).toBe(parent.id);
+    });
+
+    it('refuses to create a preset with a name already in use, with name-taken', async () => {
+      if (!repository.capabilities.canSave) return;
+      const parent = await find('PLA A');
+
+      await expect(
+        repository.createPreset({ type: 'filament', name: 'My PLA', content: {}, parent }),
+      ).rejects.toSatisfy((error) => isComparerError(error) && error.kind === 'name-taken');
+      // System preset names count too.
+      await expect(
+        repository.createPreset({ type: 'filament', name: 'PLA A', content: {}, parent }),
+      ).rejects.toSatisfy((error) => isComparerError(error) && error.kind === 'name-taken');
+    });
   });
 }

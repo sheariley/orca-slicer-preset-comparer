@@ -266,3 +266,64 @@ describe('saving', () => {
     expect(desktopHost({ ...memoryFileSystem(new Map()), separator: '\\' }).newline).toBe('\r\n');
   });
 });
+
+describe('creating presets', () => {
+  const PARENT = `${DATA_DIR}/system/BBL/filament/Bambu PLA.json`;
+  const conf = (presetFolder: string) =>
+    `{\n\t"app": {\n\t\t"preset_folder": "${presetFolder}",\n\t\t"version": "2.4.2"\n\t}\n}\n# MD5 checksum 7CB51EEAC82C40F7FC1CEE58CE57A457\n`;
+
+  async function setup(presetFolder: string | undefined) {
+    const lock = recordingLock();
+    const fs = memoryFileSystem(
+      new Map([
+        [PARENT, '{"name":"Bambu PLA","setting_id":"GFSA00","nozzle_temperature":["220"]}'],
+        [`${DATA_DIR}/system/BBL.json`, '{"name":"Bambu Lab","version":"02.08.00.12"}'],
+        ...(presetFolder === undefined
+          ? []
+          : ([[`${DATA_DIR}/OrcaSlicer.conf`, conf(presetFolder)]] as const)),
+      ]),
+    );
+    const repository = desktopHost(fs, { lock });
+    const [parent] = await repository.listPresets();
+    const create = () =>
+      repository.createPreset({
+        type: 'filament',
+        name: 'My PLA',
+        content: { name: 'My PLA', inherits: 'Bambu PLA', from: 'User', fan_max_speed: ['80'] },
+        parent: parent!,
+      });
+    return { fs, lock, create };
+  }
+
+  it("creates it in the signed-in account's folder, with the vendor's version and a new .info", async () => {
+    const { fs, lock, create } = await setup('b8b63496');
+
+    const result = await create();
+
+    const path = `${DATA_DIR}/user/b8b63496/filament/My PLA.json`;
+    expect(result).toEqual({
+      ref: { id: path, name: 'My PLA', type: 'filament', origin: 'user' },
+      reloadRequired: 'restart',
+    });
+    expect(fs.files.get(path)).toBe(
+      '{\n\t"fan_max_speed": [\n\t\t"80"\n\t],\n\t"from": "User",\n\t"inherits": "Bambu PLA",\n\t"name": "My PLA",\n\t"version": "2.8.0.12"\n}\n',
+    );
+    expect(fs.files.get(path.replace('.json', '.info'))).toBe(
+      'sync_info = create\nuser_id = b8b63496\nsetting_id = \nbase_id = GFSA00\nupdated_time = 0\n',
+    );
+    expect(lock.uses).toBe(1);
+    expect([...fs.files.keys()].filter((file) => file.endsWith('.tmp'))).toEqual([]);
+  });
+
+  it('creates it in the default folder when signed out, or without OrcaSlicer.conf', async () => {
+    for (const presetFolder of ['', undefined]) {
+      const { fs, create } = await setup(presetFolder);
+
+      await create();
+
+      expect(fs.files.get(`${DATA_DIR}/user/default/filament/My PLA.info`)).toContain(
+        'user_id = \n',
+      );
+    }
+  });
+});

@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Reads OrcaSlicer's data folder ($CONFIG/OrcaSlicer). Writes only user presets ($CONFIG/OrcaSlicer/user), the app's own backups ($APPDATA/backups), and its preferences ($APPDATA/settings.json); never system presets. Removes only its own temporary files (*.tmp). Can close its window without asking again (after the UI asked about unsaved changes).",
+  "description": "Reads OrcaSlicer's data folder ($CONFIG/OrcaSlicer). Writes only user presets ($CONFIG/OrcaSlicer/user, creating folders there for new presets), the app's own backups ($APPDATA/backups), and its preferences ($APPDATA/settings.json); never system presets. Removes only its own temporary files (*.tmp). Can close its window without asking again (after the UI asked about unsaved changes).",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -83,6 +83,9 @@
         },
         {
           "path": "$APPDATA/backups/**"
+        },
+        {
+          "path": "$CONFIG/OrcaSlicer/user/**"
         }
       ]
     }

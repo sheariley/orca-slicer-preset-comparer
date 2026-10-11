@@ -376,18 +376,36 @@ describe('editing', () => {
     expect(await screen.findByText('No unsaved changes')).toBeInTheDocument();
   });
 
-  it("doesn't offer copying into a system preset, and says why", async () => {
-    const { user } = setup();
+  it('saves copies into a system preset as a new user preset, named when saving', async () => {
+    const { user, fileText } = setup();
     await compare(user, 'PLA', 'Generic PETG');
-
-    expect(
-      screen.queryByRole('button', { name: 'Copy Nozzle temperature to Generic PETG' }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Copy Nozzle temperature to PLA' }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Copy selected to Generic PETG/ })).toBeDisabled();
     expect(within(screen.getByRole('table')).getByText('System')).toBeInTheDocument();
+
+    await user.click(
+      screen.getByRole('button', { name: 'Copy Nozzle temperature to Generic PETG' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save…' }));
+    const dialog = screen.getByRole('dialog', { name: 'Save changes' });
+    const name = within(dialog).getByRole('textbox', { name: 'New preset name for Generic PETG' });
+    expect(name).toHaveValue('Generic PETG - Copy');
+    await user.clear(name);
+    await user.type(name, 'PLA');
+    expect(dialog).toHaveTextContent('A preset with this name already exists.');
+    expect(name).toHaveAttribute('aria-invalid', 'true');
+    expect(within(dialog).getByRole('button', { name: 'Save' })).toBeDisabled();
+    await user.clear(name);
+    await user.type(name, 'My PETG');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+
+    const results = await screen.findByRole('region', { name: 'Save results' });
+    expect(results).toHaveTextContent(
+      'Saved the changes to Generic PETG as a new user preset, "My PETG". Generic PETG itself is unchanged.',
+    );
+    // The new preset takes the system preset's place, with nothing left unsaved.
+    expect(await screen.findByDisplayValue('My PETG — User')).toBe(screen.getByLabelText('Right'));
+    expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+    expect(await fileText('My PETG')).toContain('"inherits": "Generic PETG"');
+    expect(await fileText('Generic PETG')).toContain('"230"');
   });
 
   describe('copying to other presets', () => {
@@ -454,7 +472,7 @@ describe('editing', () => {
       expect(await fileText('Nylon')).toContain('"260"');
     });
 
-    it('lets users pick the source, drop settings, and filter targets; leaves system presets out', async () => {
+    it('lets users pick the source, drop settings, and filter targets, and says which are system presets', async () => {
       const { user } = setup();
       const dialog = await openBulkCopy(user);
 
@@ -470,8 +488,13 @@ describe('editing', () => {
         name: 'Copy 1 setting to other presets',
       });
       await within(preview).findByRole('button', { name: 'Back' });
-      expect(preview).toHaveTextContent("A system preset, which can't be changed.");
-      expect(within(preview).getByRole('button', { name: 'Copy to 0 presets' })).toBeDisabled();
+      expect(preview).toHaveTextContent(
+        "Generic PETG is a system preset, which can't be changed. When you save, the changes to it go into new user presets",
+      );
+      expect(preview).toHaveTextContent(
+        '1 setting changes. A system preset: saving puts the changes',
+      );
+      expect(within(preview).getByRole('button', { name: 'Copy to 1 preset' })).toBeEnabled();
 
       // Back keeps the choices.
       await user.click(within(preview).getByRole('button', { name: 'Back' }));

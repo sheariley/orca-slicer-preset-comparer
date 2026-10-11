@@ -2,6 +2,10 @@ import {
   ComparerError,
   isComparerError,
   markPresetInfoForSync,
+  newPresetInfo,
+  orcaPresetVersion,
+  orcaSlicerFormat,
+  serializeProfile,
   type HostCapabilities,
   type PresetRef,
   type ProfileRepository,
@@ -53,6 +57,8 @@ export function createDesktopHost({
   const join = (...parts: string[]) => parts.join(fs.separator);
   const parentOf = (path: string) => path.slice(0, path.lastIndexOf(fs.separator));
   const userRoot = join(dataDir, 'user');
+  // OrcaSlicer writes CRLF on Windows (text-mode files), LF elsewhere.
+  const newline = fs.separator === '\\' ? '\r\n' : '\n';
 
   async function presetsIn(
     folder: string,
@@ -100,6 +106,45 @@ export function createDesktopHost({
     return refs.sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /**
+   * The user folder OrcaSlicer saves new presets to: the signed-in account's, named in
+   * OrcaSlicer.conf (`app.preset_folder`), or "default" when signed out. The file is JSON
+   * followed by an "# MD5 checksum" line. Anything unreadable falls back to "default".
+   */
+  async function currentUserFolder(): Promise<string> {
+    const confPath = join(dataDir, 'OrcaSlicer.conf');
+    try {
+      if (!(await fs.exists(confPath))) return 'default';
+      const json = (await fs.readText(confPath))
+        .split(/\r?\n/)
+        .filter((line) => !line.startsWith('#'))
+        .join('\n');
+      const folder: unknown = (JSON.parse(json) as { app?: { preset_folder?: unknown } }).app
+        ?.preset_folder;
+      return typeof folder === 'string' && folder.length > 0 ? folder : 'default';
+    } catch {
+      return 'default';
+    }
+  }
+
+  /**
+   * The `version` OrcaSlicer gives a preset created from `parent`: the parent's own, which for a
+   * system preset is its vendor bundle's (`system/<Vendor>.json`), in OrcaSlicer's format.
+   */
+  async function versionFrom(parent: PresetRef): Promise<string | undefined> {
+    try {
+      const path =
+        parent.origin === 'system' && parent.vendor
+          ? join(dataDir, 'system', `${parent.vendor}.json`)
+          : parent.id;
+      const version: unknown = (JSON.parse(await fs.readText(path)) as { version?: unknown })
+        .version;
+      return typeof version === 'string' ? orcaPresetVersion(version) : undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** The user folder (user/<user_id>/) a user preset's file lives in. */
   const userFolderOf = (ref: PresetRef) =>
     ref.origin === 'user'
@@ -108,8 +153,7 @@ export function createDesktopHost({
 
   return {
     capabilities: CAPABILITIES,
-    // OrcaSlicer writes CRLF on Windows (text-mode files), LF elsewhere.
-    newline: fs.separator === '\\' ? '\r\n' : '\n',
+    newline,
 
     async listPresets(query) {
       const refs = await scan();
@@ -141,6 +185,57 @@ export function createDesktopHost({
         candidates.find((ref) => ref.origin === 'system' && ref.vendor === child.vendor) ??
         candidates.find((ref) => ref.origin === 'system')
       );
+    },
+
+    /**
+     * Creates a user preset the way OrcaSlicer saves a new one: in the current user folder (see
+     * currentUserFolder), in OrcaSlicer's format for new files, with the parent's `version`, and
+     * a new `.info` (`sync_info = create`, so OrcaSlicer uploads it). Under OrcaSlicer's lock, and
+     * never over an existing file.
+     */
+    async createPreset({ type, name, content, parent }) {
+      if ((await scan()).some((ref) => ref.type === type && ref.name === name)) {
+        throw new ComparerError(
+          'name-taken',
+          `A ${type} preset named "${name}" already exists.`,
+          name,
+        );
+      }
+      const userFolder = await currentUserFolder();
+      const folder = join(userRoot, userFolder, type);
+      const path = join(folder, `${name}.json`);
+      const version = await versionFrom(parent);
+      const parentContent = await fs
+        .readText(parent.id)
+        .then((text) => JSON.parse(text) as Record<string, unknown>)
+        .catch(() => ({}) as Record<string, unknown>);
+      const settingId = parentContent['setting_id'];
+      const text = serializeProfile(
+        { ...content, ...(version ? { version } : {}) },
+        orcaSlicerFormat(newline),
+      );
+      const info = newPresetInfo({
+        userId: userFolder === 'default' ? '' : userFolder,
+        baseId: typeof settingId === 'string' ? settingId : '',
+        newline,
+      });
+      return lock.withLock(async () => {
+        try {
+          if (await fs.exists(path)) {
+            throw new ComparerError('name-taken', `"${name}" already exists.`, path);
+          }
+          await fs.makeDirectory(folder);
+          await writeAtomically(path, text);
+          await writeAtomically(path.replace(/\.json$/i, '.info'), info);
+          // OrcaSlicer only loads new presets when it starts.
+          return {
+            ref: { id: path, name, type, origin: 'user' as const },
+            reloadRequired: 'restart' as const,
+          };
+        } catch (error) {
+          throw isComparerError(error) ? error : toComparerError(error, path);
+        }
+      });
     },
 
     /**

@@ -7,4 +7,5 @@ export * from './diff/diff-profiles.ts';
 export * from './serialize/serialize-profile.ts';
 export * from './edit/transfer.ts';
 export * from './edit/history.ts';
+export * from './edit/new-user-preset.ts';
 export * from './serialize/preset-info.ts';

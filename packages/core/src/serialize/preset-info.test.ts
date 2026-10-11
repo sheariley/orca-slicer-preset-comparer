@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { markPresetInfoForSync } from './preset-info.ts';
+import { markPresetInfoForSync, newPresetInfo, orcaPresetVersion } from './preset-info.ts';
 
 // As OrcaSlicer writes it on Windows (text mode: CRLF).
 const synced =
@@ -33,5 +33,23 @@ describe('markPresetInfoForSync', () => {
 
   it('adds the line if it is missing', () => {
     expect(markPresetInfoForSync('user_id = x\r\n')).toBe('sync_info = update\r\nuser_id = x\r\n');
+  });
+});
+
+describe('newPresetInfo', () => {
+  it('queues a new preset for upload, with no cloud id yet', () => {
+    expect(newPresetInfo({ userId: 'u1', baseId: 'GFSA04', newline: '\r\n' })).toBe(
+      'sync_info = create\r\nuser_id = u1\r\nsetting_id = \r\nbase_id = GFSA04\r\nupdated_time = 0\r\n',
+    );
+  });
+});
+
+describe('orcaPresetVersion', () => {
+  it("formats a vendor bundle's version the way OrcaSlicer writes it into presets", () => {
+    expect(orcaPresetVersion('02.08.00.12')).toBe('2.8.0.12');
+    expect(orcaPresetVersion('02.03.01.10')).toBe('2.3.1.10');
+    expect(orcaPresetVersion('2.4.2')).toBe('2.4.0.2');
+    expect(orcaPresetVersion('2.2')).toBe('2.2.0.0');
+    expect(orcaPresetVersion('nightly')).toBeUndefined();
   });
 });

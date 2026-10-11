@@ -35,3 +35,41 @@ export function markPresetInfoForSync(infoText: string): string {
     infoText.slice(line.index + line[0].length)
   );
 }
+
+export interface NewPresetInfo {
+  /** The signed-in account's id (the user folder's name), or "" when signed out. */
+  readonly userId: string;
+  /** The parent's cloud id: its `setting_id`, or "" if it has none. */
+  readonly baseId: string;
+  readonly newline: '\n' | '\r\n';
+}
+
+/**
+ * The `.info` of a preset created on this computer, as OrcaSlicer writes it when it saves a new
+ * preset (`Preset::save_info` after `save_current_preset`): `sync_info = create` queues the
+ * upload, there's no cloud id yet, and `updated_time = 0` until the sync service sets it.
+ */
+export function newPresetInfo({ userId, baseId, newline }: NewPresetInfo): string {
+  return [
+    'sync_info = create',
+    `user_id = ${userId}`,
+    'setting_id = ',
+    `base_id = ${baseId}`,
+    'updated_time = 0',
+    '',
+  ].join(newline);
+}
+
+/**
+ * A vendor bundle's version (e.g. "02.08.00.12" in `<Vendor>.json`) the way OrcaSlicer writes
+ * it into a preset's `version` key: `Semver::parse` folds a fourth part into the patch number
+ * (patch × 100 + fourth), and `Semver::to_string` splits it back out, dropping leading zeros
+ * ("2.8.0.12"). A three-part version "2.4.2" becomes "2.4.0.2". Undefined if it isn't a version.
+ */
+export function orcaPresetVersion(version: string): string | undefined {
+  const match = /^(\d+)\.(\d+)(?:\.(\d+)(?:\.(\d+))?)?$/.exec(version.trim());
+  if (!match) return undefined;
+  const [, major, minor, third = '0', fourth] = match;
+  const patch = fourth === undefined ? Number(third) : Number(third) * 100 + Number(fourth);
+  return `${Number(major)}.${Number(minor)}.${Math.floor(patch / 100)}.${patch % 100}`;
+}

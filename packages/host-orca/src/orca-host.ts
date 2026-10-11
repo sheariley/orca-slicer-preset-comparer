@@ -47,5 +47,10 @@ export async function createOrcaHost(
       });
       return { ref, reloadRequired };
     },
+
+    async createPreset() {
+      // The plugin can't save yet (canSave: false), so the UI never gets here.
+      throw new ComparerError('unsupported', "Creating presets isn't supported in the plugin yet.");
+    },
   };
 }

@@ -306,14 +306,13 @@ function BulkPreview({
   onCancel: () => void;
 }) {
   const app = useComparerApp();
-  const editable = targets.filter((id) => presetIn(session, id).ref.origin === 'user');
-  const system = targets.filter((id) => presetIn(session, id).ref.origin !== 'user');
+  const isSystem = (id: string) => presetIn(session, id).ref.origin === 'system';
+  const system = targets.filter(isSystem);
+  const systemNames = system.map((id) => presetIn(session, id).ref.name).join(', ');
 
   // Every editable target, planned on a copy of the session (variant fitting included).
   const all = useMemo(
-    () => app.copy(session, { source, targets: editable, keys, pinOverrides: pins }),
-    // `editable` is derived from `targets` and `session`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    () => app.copy(session, { source, targets, keys, pinOverrides: pins }),
     [app, session, source, targets, keys, pins],
   );
   const plans = new Map(all.plan.targets.map((plan) => [plan.target.id, plan]));
@@ -321,7 +320,7 @@ function BulkPreview({
     const skipped = new Set(plan.skipped.map((skip) => skip.key));
     return keys.filter((key) => !skipped.has(key)).length;
   };
-  const included = editable.filter((id) => !excluded.has(id) && changing(plans.get(id)!) > 0);
+  const included = targets.filter((id) => !excluded.has(id) && changing(plans.get(id)!) > 0);
 
   const label =
     included.length === 1
@@ -363,8 +362,17 @@ function BulkPreview({
       <p>
         From {sourceName}: {included.length} of {plural(targets.length, 'preset')} will change.
       </p>
+      {system.length > 0 && (
+        <p className="warning">
+          {system.length === 1
+            ? `${systemNames} is a system preset, which can't be changed.`
+            : `${systemNames} are system presets, which can't be changed.`}{' '}
+          When you save, the changes to {system.length === 1 ? 'it' : 'them'} go into new user
+          presets that inherit from them, and you name them once for the whole save.
+        </p>
+      )}
       <ul className="bulk-targets">
-        {editable.map((id) => {
+        {targets.map((id) => {
           const plan = plans.get(id)!;
           const name = plan.target.name;
           const count = changing(plan);
@@ -384,6 +392,9 @@ function BulkPreview({
                   {count === 0
                     ? 'Already matches, so it is skipped.'
                     : `${plural(count, 'setting')} ${count === 1 ? 'changes' : 'change'}.`}
+                  {count > 0 &&
+                    isSystem(id) &&
+                    ' A system preset: saving puts the changes into a new user preset, which you name then.'}
                 </span>
               </div>
               <details>
@@ -405,20 +416,6 @@ function BulkPreview({
             </li>
           );
         })}
-        {system.map((id) => (
-          <li key={id} data-included={false}>
-            <div className="bulk-target-head">
-              <label className="toggle">
-                <input type="checkbox" checked={false} disabled />
-                <strong>{presetIn(session, id).ref.name}</strong>
-              </label>
-              <span className="bulk-target-status">
-                A system preset, which can't be changed. Saving it as a new user preset isn't
-                available yet, so it's left out.
-              </span>
-            </div>
-          </li>
-        ))}
       </ul>
     </Dialog>
   );

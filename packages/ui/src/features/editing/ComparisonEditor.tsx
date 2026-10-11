@@ -13,7 +13,7 @@ import {
 import type { PresetRef } from '@comparer/core';
 import { useEffect, useMemo, useState } from 'react';
 import { ErrorMessage } from '../../components/ErrorMessage.tsx';
-import { InfoTip } from '../../components/InfoTip.tsx';
+import { useAsync } from '../../hooks/useAsync.ts';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
 import { DiffView, type DiffEditing, type Side } from '../diff-view/DiffView.tsx';
 import { settingNames } from '../diff-view/format.ts';
@@ -30,6 +30,11 @@ interface ComparisonEditorProps {
   readonly right: PresetRef;
   /** Tells the screen whether there are unsaved changes (so it can confirm before leaving). */
   readonly onDirtyChange: (dirty: boolean) => void;
+  /**
+   * A system preset's changes were saved as a new user preset, now open in the session. The
+   * screen shows the new preset in place of the system one, without reopening the session.
+   */
+  readonly onPresetCreated?: (system: PresetRef, created: PresetRef) => void;
 }
 
 type SaveState =
@@ -46,7 +51,13 @@ const plural = (count: number, word: string) => `${count} ${word}${count === 1 ?
  * Compares two presets and edits them: copying values in either direction, undo/redo, and
  * saving. All edits live in an EditSession until saved.
  */
-export function ComparisonEditor({ initial, left, right, onDirtyChange }: ComparisonEditorProps) {
+export function ComparisonEditor({
+  initial,
+  left,
+  right,
+  onDirtyChange,
+  onPresetCreated,
+}: ComparisonEditorProps) {
   const app = useComparerApp();
   const [session, setSession] = useState(initial);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -54,6 +65,13 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
   const [bulk, setBulk] = useState<readonly string[] | null>(null);
   const [save, setSave] = useState<SaveState>({ step: 'idle' });
   const [notice, setNotice] = useState('');
+  // The names given to new user presets in the last save, so a retry uses them again.
+  const [newPresetNames, setNewPresetNames] = useState<ReadonlyMap<string, string>>(new Map());
+  // Preset names already in use, for naming new presets; reloaded after each save.
+  const [saveCount, setSaveCount] = useState(0);
+  const presetNames = useAsync(`${left.type}:${saveCount}`, () =>
+    app.listPresets({ type: left.type }).then((refs) => new Set(refs.map((ref) => ref.name))),
+  );
 
   const comparison = useMemo(
     () => app.compareEdited(session, left.id, right.id),
@@ -72,10 +90,8 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   const canEdit = app.capabilities.canSave && left.id !== right.id;
-  const canCopyTo: Record<Side, boolean> = {
-    left: canEdit && left.origin === 'user',
-    right: canEdit && right.origin === 'user',
-  };
+  // System presets too: saving puts their changes into new user presets.
+  const canCopyTo: Record<Side, boolean> = { left: canEdit, right: canEdit };
   const ids: Record<Side, string> = { left: left.id, right: right.id };
   const other = (side: Side): Side => (side === 'left' ? 'right' : 'left');
   const names = useMemo(
@@ -175,13 +191,20 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
     return () => document.removeEventListener('keydown', onKeyDown);
   });
 
-  const runSave = async (retry: TargetSaveResult[] | null) => {
+  const runSave = async (retry: TargetSaveResult[] | null, names = newPresetNames) => {
     setSave(retry ? { step: 'working', results: retry } : { step: 'saving' });
+    setNewPresetNames(names);
     try {
-      const { session: next, results } = await app.saveChanges(session);
+      const { session: next, results } = await app.saveChanges(session, {
+        newPresetNames: names,
+      });
       setSession(next);
       setSave({ step: 'done', results });
       setNotice('');
+      setSaveCount((count) => count + 1);
+      for (const result of results) {
+        if (result.status === 'created') onPresetCreated?.(result.target, result.created);
+      }
     } catch (error) {
       setSave({ step: 'error', error });
     }
@@ -255,14 +278,17 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
           </button>
           <span className="toolbar-separator" />
           {(['left', 'right'] as const).map((to) => (
-            <CopySelectedButton
+            <button
               key={to}
-              to={to}
-              count={selected.size}
-              targetName={comparison[to].ref.name}
-              allowed={canCopyTo[to]}
+              type="button"
               onClick={() => copySelected(to)}
-            />
+              disabled={selected.size === 0}
+            >
+              {to === 'left' && <span aria-hidden="true">← </span>}
+              Copy selected to {comparison[to].ref.name}
+              {selected.size > 0 && ` (${selected.size})`}
+              {to === 'right' && <span aria-hidden="true"> →</span>}
+            </button>
           ))}
           <button
             type="button"
@@ -322,43 +348,12 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
         <SaveDialog
           previews={app.previewSave(session)}
           nameOf={labelOf}
+          takenNames={presetNames.status === 'done' ? presetNames.value : undefined}
           saving={save.step === 'saving'}
-          onConfirm={() => void runSave(null)}
+          onConfirm={(names) => void runSave(null, names)}
           onCancel={() => setSave({ step: 'idle' })}
         />
       )}
     </div>
-  );
-}
-
-function CopySelectedButton({
-  to,
-  count,
-  targetName,
-  allowed,
-  onClick,
-}: {
-  to: Side;
-  count: number;
-  targetName: string;
-  allowed: boolean;
-  onClick: () => void;
-}) {
-  const button = (
-    <button type="button" onClick={onClick} disabled={!allowed || count === 0}>
-      {to === 'left' && <span aria-hidden="true">← </span>}
-      Copy selected to {targetName}
-      {count > 0 && ` (${count})`}
-      {to === 'right' && <span aria-hidden="true"> →</span>}
-    </button>
-  );
-  if (allowed) return button;
-  return (
-    <InfoTip
-      subject={`copying to ${targetName}`}
-      content={`${targetName} is a system preset, which the comparer doesn't change. Saving changes as a new user preset isn't available yet.`}
-    >
-      {button}
-    </InfoTip>
   );
 }

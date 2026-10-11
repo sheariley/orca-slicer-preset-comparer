@@ -11,6 +11,7 @@ import {
   record,
   redo,
   undo,
+  withoutTarget,
   type EditBatch,
 } from './history.ts';
 import type { Change } from './transfer.ts';
@@ -152,5 +153,20 @@ describe('applyContentEdits and editsBetween', () => {
 
   it('treats a change of shape as a change', () => {
     expect(editsBetween({ a: ['1'] }, { a: '1' })).toEqual({ set: { a: '1' } });
+  });
+});
+
+describe('withoutTarget', () => {
+  it("drops one target's changes from done and undone batches, and batches left empty", () => {
+    const both = batch('Copy to both', { PLA: { fan: set(['80']) }, PETG: { fan: set(['80']) } });
+    const petgOnly = batch('Copy to PETG', { PETG: { nozzle_temperature: set(['250']) } });
+    const history = undo(record(record(emptyHistory, both), petgOnly));
+
+    const result = withoutTarget(history, 'PETG');
+
+    expect(result.done.map((entry) => entry.label)).toEqual(['Copy to both']);
+    expect(result.done[0]!.plan.targets.map((plan) => plan.target.id)).toEqual(['PLA']);
+    expect(result.undone).toEqual([]);
+    expect(pendingEdits(result, originals).map((entry) => entry.target.id)).toEqual(['PLA']);
   });
 });

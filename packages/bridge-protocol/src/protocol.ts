@@ -82,6 +82,7 @@ export const errorSchema = z.object({
     'unsupported',
     'conflict',
     'busy',
+    'name-taken',
     'host-error',
   ]),
   message: z.string(),

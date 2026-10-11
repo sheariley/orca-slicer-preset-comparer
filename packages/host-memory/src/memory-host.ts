@@ -83,6 +83,22 @@ export function createMemoryHost({
       return { ref, reloadRequired: 'none' };
     },
 
+    async createPreset({ type, name, content }) {
+      if (!resolvedCapabilities.canSave) {
+        throw new ComparerError('unsupported', 'This host is read-only.');
+      }
+      if ([...byId.values()].some(({ ref }) => ref.type === type && ref.name === name)) {
+        throw new ComparerError(
+          'name-taken',
+          `A ${type} preset named "${name}" already exists.`,
+          name,
+        );
+      }
+      const ref = { id: `user/${type}/${name}`, name, type, origin: 'user' as const };
+      byId.set(ref.id, withText({ ref, content: { ...content } }));
+      return { ref, reloadRequired: 'none' };
+    },
+
     async load() {
       return settings;
     },

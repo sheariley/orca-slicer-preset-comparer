@@ -3,9 +3,12 @@ import {
   applyEdits,
   diffProfiles,
   isComparerError,
+  newUserPresetContent,
   orcaSlicerFormat,
   planTransfer,
+  resolveChain,
   serializeProfile,
+  suggestedPresetName,
   type DiffRow,
   type HostCapabilities,
   type PresetQuery,
@@ -34,6 +37,7 @@ import {
   recordBatch,
   reloadPreset,
   resolveEdited,
+  savedAsNewPreset,
   type EditSession,
 } from './session/session.ts';
 import { createPreferences, type Preferences } from './preferences.ts';
@@ -72,7 +76,15 @@ export type TargetSaveResult =
       /** The file wasn't in canonical form, so saving reformatted all of it. */
       readonly reformatted: boolean;
     }
-  /** System presets are never written; the change needs a new user preset (not built yet). */
+  /** A system preset's changes, saved as a new user preset that inherits from it. */
+  | {
+      readonly status: 'created';
+      /** The system preset, which is left as it was. */
+      readonly target: PresetRef;
+      readonly created: PresetRef;
+      readonly reloadRequired: SaveResult['reloadRequired'];
+    }
+  /** A system preset with no name given for its new user preset: nothing was written. */
   | { readonly status: 'needs-user-preset'; readonly target: PresetRef }
   /** Nothing was written; the target's edits stay pending so the user can retry. */
   | { readonly status: 'failed'; readonly target: PresetRef; readonly error: ComparerError };
@@ -80,12 +92,25 @@ export type TargetSaveResult =
 /** What saving would do to one preset with pending edits (for the confirmation before saving). */
 export interface SavePreview {
   readonly target: PresetRef;
-  /** `ready`: will be written. `needs-user-preset`: a system preset, which is never written. */
-  readonly status: 'ready' | 'needs-user-preset';
+  /**
+   * `ready`: will be written. `new-user-preset`: a system preset, which is never written; its
+   * changes go into a new user preset that inherits from it, once the user names it.
+   */
+  readonly status: 'ready' | 'new-user-preset';
+  /** For `new-user-preset`: OrcaSlicer's suggested name ("<name> - Copy"). */
+  readonly suggestedName?: string;
   /** The keys the save sets or removes in the preset's file. */
   readonly keys: readonly string[];
   /** The file isn't in canonical form (e.g. edited by hand), so saving will reformat all of it. */
   readonly reformatted: boolean;
+}
+
+export interface SaveOptions {
+  /**
+   * The name of the new user preset for each system preset with pending changes (by the system
+   * preset's id). A system preset without one is reported as `needs-user-preset`.
+   */
+  readonly newPresetNames?: ReadonlyMap<string, string>;
 }
 
 /** The use cases the UI calls. The UI never talks to a host directly. */
@@ -128,7 +153,10 @@ export interface ComparerApp {
    * Saves every preset with pending edits, one file at a time. One failure doesn't stop the
    * others; failed targets keep their pending edits.
    */
-  saveChanges(session: EditSession): Promise<{ session: EditSession; results: TargetSaveResult[] }>;
+  saveChanges(
+    session: EditSession,
+    options?: SaveOptions,
+  ): Promise<{ session: EditSession; results: TargetSaveResult[] }>;
 }
 
 export function createComparerApp({
@@ -175,6 +203,34 @@ export function createComparerApp({
     // Hosts always provide the text; documents built in memory may not.
     const originalText = original.text ?? serializeProfile(original.content, fallback);
     return { previousText: original.text, ...applyEdits(originalText, edits, fallback) };
+  };
+
+  /**
+   * Writes a system preset's pending changes into a new user preset named `name` that inherits
+   * from it (see core's newUserPresetContent), and reads it back for the session.
+   */
+  const createFromSystemPreset = async (
+    session: EditSession,
+    target: PresetRef,
+    name: string,
+    batch: string,
+  ) => {
+    const options = resolveOptions(target.type);
+    const { chain, templates } = presetIn(session, target.id);
+    const content = newUserPresetContent({
+      name,
+      parent: resolveChain(chain, { ...options, templates }),
+      edited: resolveEdited(session, target.id, options),
+    });
+    const saved = await repository.createPreset({
+      type: target.type,
+      name,
+      content,
+      parent: target,
+      batch,
+    });
+    const files = await loadPresetDocuments(repository, saved.ref);
+    return { files: { ref: saved.ref, ...files }, reloadRequired: saved.reloadRequired };
   };
 
   return {
@@ -241,7 +297,13 @@ export function createComparerApp({
       return pending(session).map(({ target, edits }) => {
         const keys = [...Object.keys(edits.set ?? {}), ...(edits.remove ?? [])];
         if (target.origin === 'system') {
-          return { target, status: 'needs-user-preset', keys, reformatted: false };
+          return {
+            target,
+            status: 'new-user-preset',
+            suggestedName: suggestedPresetName(target.name),
+            keys,
+            reformatted: false,
+          };
         }
         return {
           target,
@@ -252,14 +314,30 @@ export function createComparerApp({
       });
     },
 
-    async saveChanges(session) {
+    async saveChanges(session, options = {}) {
       let current = session;
       const results: TargetSaveResult[] = [];
       // One id for the whole save, e.g. so the host keeps its backups together.
       const batch = new Date().toISOString();
       for (const { target, edits } of pending(session)) {
         if (target.origin === 'system') {
-          results.push({ status: 'needs-user-preset', target });
+          const name = options.newPresetNames?.get(target.id);
+          if (name === undefined) {
+            results.push({ status: 'needs-user-preset', target });
+            continue;
+          }
+          try {
+            const created = await createFromSystemPreset(current, target, name, batch);
+            current = savedAsNewPreset(current, target.id, created.files);
+            results.push({
+              status: 'created',
+              target,
+              created: created.files.ref,
+              reloadRequired: created.reloadRequired,
+            });
+          } catch (error) {
+            results.push({ status: 'failed', target, error: asComparerError(error, target) });
+          }
           continue;
         }
         try {

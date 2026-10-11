@@ -183,7 +183,8 @@ describe('editing session', () => {
       },
       {
         target: expect.objectContaining({ name: 'Sys' }),
-        status: 'needs-user-preset',
+        status: 'new-user-preset',
+        suggestedName: 'Sys - Copy',
         keys: ['nozzle_temperature', 'fan_max_speed'],
         reformatted: false,
       },
@@ -191,7 +192,7 @@ describe('editing session', () => {
     expect((await host.readDocument(petg.ref)).text).toBe(compact);
   });
 
-  it('never writes system presets, and reports that they need a user preset', async () => {
+  it('never writes system presets: without a name for a new preset, nothing is saved', async () => {
     const system: ProfileDocument = {
       ref: { id: 'Sys', name: 'Sys', type: 'filament', origin: 'system', vendor: 'V' },
       content: { name: 'Sys', nozzle_temperature: ['200'] },
@@ -210,6 +211,77 @@ describe('editing session', () => {
     expect(results.map((result) => result.status)).toEqual(['needs-user-preset']);
     expect((await host.readDocument(system.ref)).text).toBe(before);
     expect(hasPendingEdits(after)).toBe(true);
+  });
+
+  describe("saving a system preset's changes as a new user preset", () => {
+    const system: ProfileDocument = {
+      ref: { id: 'Sys', name: 'Sys', type: 'filament', origin: 'system', vendor: 'V' },
+      content: {
+        name: 'Sys',
+        nozzle_temperature: ['200'],
+        fan_max_speed: ['80'],
+        setting_id: 'GF1',
+      },
+    };
+
+    it('creates a preset that inherits from it and holds only the changes', async () => {
+      const { host, app, refs } = setup({ extra: [system] });
+      const session = await app.openSession(await refs('PLA', 'Sys'));
+      const before = (await host.readDocument(system.ref)).text;
+      const { session: edited } = app.copy(session, {
+        source: 'PLA',
+        targets: ['Sys'],
+        keys: ['nozzle_temperature'],
+      });
+
+      const { session: after, results } = await app.saveChanges(edited, {
+        newPresetNames: new Map([['Sys', 'My Sys']]),
+      });
+
+      expect(results).toEqual([
+        {
+          status: 'created',
+          target: expect.objectContaining({ name: 'Sys' }),
+          created: expect.objectContaining({ name: 'My Sys', origin: 'user' }),
+          reloadRequired: 'none',
+        },
+      ]);
+      expect((await host.readDocument(system.ref)).text).toBe(before);
+      const created = results[0]!.status === 'created' ? results[0]!.created : undefined;
+      expect((await host.readDocument(created!)).content).toEqual({
+        name: 'My Sys',
+        from: 'User',
+        inherits: 'Sys',
+        is_custom_defined: '0',
+        filament_settings_id: ['My Sys'],
+        nozzle_temperature: ['210'],
+      });
+      // The system preset is back to its file, and the new preset is open in the session.
+      expect(hasPendingEdits(after)).toBe(false);
+      expect(canUndoSession(after)).toBe(false);
+      const comparison = app.compareEdited(after, 'PLA', created!.id);
+      expect(comparison.rows.find((row) => row.key === 'nozzle_temperature')?.status).toBe('same');
+      expect(comparison.right.settings.get('fan_max_speed')?.definedBy).toMatchObject({
+        name: 'Sys',
+      });
+    });
+
+    it('keeps the changes pending when the name is taken', async () => {
+      const { app, refs } = setup({ extra: [system] });
+      const session = await app.openSession(await refs('PLA', 'Sys'));
+      const { session: edited } = app.copy(session, {
+        source: 'PLA',
+        targets: ['Sys'],
+        keys: ['nozzle_temperature'],
+      });
+
+      const { session: after, results } = await app.saveChanges(edited, {
+        newPresetNames: new Map([['Sys', 'PETG']]),
+      });
+
+      expect(results[0]).toMatchObject({ status: 'failed', error: { kind: 'name-taken' } });
+      expect(pending(after).map((entry) => entry.target.name)).toEqual(['Sys']);
+    });
   });
 
   it('keeps edits pending when a save fails, and saves the other targets', async () => {

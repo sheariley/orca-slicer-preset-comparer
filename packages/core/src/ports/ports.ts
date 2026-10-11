@@ -34,6 +34,21 @@ export interface SaveRequest {
   readonly batch?: string;
 }
 
+/** A new user preset to create (see ProfileRepository.createPreset). */
+export interface CreatePresetRequest {
+  readonly type: ProfileType;
+  readonly name: string;
+  /**
+   * The preset's content, without `version`: the host adds that from the parent's vendor bundle,
+   * as OrcaSlicer does, and writes the file in OrcaSlicer's format for new files.
+   */
+  readonly content: Readonly<Record<string, unknown>>;
+  /** The preset it inherits from. Hosts use it for cloud-sync bookkeeping (`base_id`). */
+  readonly parent: PresetRef;
+  /** See SaveRequest.batch. */
+  readonly batch?: string;
+}
+
 export interface SaveResult {
   readonly ref: PresetRef;
   /** What the user must do before OrcaSlicer sees the change. */
@@ -52,6 +67,12 @@ export interface ProfileRepository {
    */
   resolveParent(child: PresetRef, parentName: string): Promise<PresetRef | undefined>;
   saveDocument(request: SaveRequest): Promise<SaveResult>;
+  /**
+   * Creates a user preset in the folder OrcaSlicer saves new presets to, with whatever else the
+   * host keeps next to it (the desktop's `.info`). Refuses with `name-taken` when a preset of the
+   * same type already has the name. `SaveResult.ref` is the new preset.
+   */
+  createPreset(request: CreatePresetRequest): Promise<SaveResult>;
   /**
    * The platform's line endings, for brand-new files only: OrcaSlicer writes "\r\n" on Windows
    * and "\n" elsewhere. Existing files keep their own (see core/serialize).

@@ -14,7 +14,10 @@ interface SaveResultsProps {
 
 /** The outcome of a save, per preset, and what the user has to do next. */
 export function SaveResults({ results, working, onRetry, onReload, onDismiss }: SaveResultsProps) {
-  const saved = results.filter((result) => result.status === 'saved');
+  const saved = results.filter(
+    (result): result is Extract<TargetSaveResult, { reloadRequired: unknown }> =>
+      result.status === 'saved' || result.status === 'created',
+  );
   const failed = results.filter((result) => result.status === 'failed');
   // Retrying can't fix a conflict (the file changed since it was read); reloading can.
   const conflicts = failed.filter((result) => result.error.kind === 'conflict');
@@ -45,10 +48,16 @@ export function SaveResults({ results, working, onRetry, onReload, onDismiss }: 
                 {result.reformatted && " The file was rewritten in OrcaSlicer's layout."}
               </>
             )}
+            {result.status === 'created' && (
+              <>
+                Saved the changes to {result.target.name} as a new user preset, &quot;
+                {result.created.name}&quot;. {result.target.name} itself is unchanged.
+              </>
+            )}
             {result.status === 'needs-user-preset' && (
               <>
-                {result.target.name} is a system preset, which can't be changed. Saving it as a new
-                user preset isn't available yet, so its changes stay unsaved.
+                {result.target.name} is a system preset, which can&apos;t be changed, and no name
+                was given for a new user preset, so its changes stay unsaved.
               </>
             )}
             {result.status === 'failed' && (

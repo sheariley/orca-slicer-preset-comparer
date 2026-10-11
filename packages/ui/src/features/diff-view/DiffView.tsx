@@ -338,7 +338,7 @@ export function DiffView({
   );
 }
 
-/** A preset's column header: its name, whether it has unsaved changes, and why it's locked. */
+/** A preset's column header: its name, whether it has unsaved changes, and whether it's a system preset. */
 function ColumnHeader({
   comparison,
   side,
@@ -353,10 +353,10 @@ function ColumnHeader({
     <th scope="col">
       {ref.name}
       {editing && editing.edited[side].size > 0 && <span className="badge">Unsaved</span>}
-      {editing && !editing.canCopyTo[side] && ref.origin === 'system' && (
+      {editing && ref.origin === 'system' && (
         <InfoTip
-          subject={`copying to ${ref.name}`}
-          content="This is a system preset, which OrcaSlicer replaces on updates, so the comparer doesn't change it. Saving changes as a new user preset isn't available yet."
+          subject={`${ref.name}, a system preset`}
+          content="A system preset, which OrcaSlicer replaces on updates, so the comparer never changes it. Changes copied into it are saved as a new user preset that inherits from it; you name it when saving."
         >
           <span className="badge">System</span>
         </InfoTip>
