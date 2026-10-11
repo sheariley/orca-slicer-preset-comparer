@@ -1,4 +1,6 @@
+import { LEGACY_VALUE_RULES_SOURCE_HASH } from '@comparer/core';
 import { describe, expect, it } from 'vitest';
+import generated from '../data/settings.json' with { type: 'json' };
 import { createSettingCatalog } from './setting-catalog.ts';
 
 describe('createSettingCatalog', () => {
@@ -84,5 +86,11 @@ describe('createSettingCatalog', () => {
     expect(catalog.defaultsFor('process').get('layer_height')).toBe('0.2');
     expect(catalog.defaultsFor('filament').get('nozzle_temperature')).toEqual(['200']);
     expect(catalog.defaultsFor('filament').has('layer_height')).toBe(false);
+  });
+
+  it("matches the OrcaSlicer handle_legacy that core's value rules were ported from", () => {
+    // When this fails, OrcaSlicer changed PrintConfigDef::handle_legacy: review the change, update
+    // core/src/resolve/legacy-values.ts, then LEGACY_VALUE_RULES_SOURCE_HASH.
+    expect(generated.legacy.sourceHash).toBe(LEGACY_VALUE_RULES_SOURCE_HASH);
   });
 });

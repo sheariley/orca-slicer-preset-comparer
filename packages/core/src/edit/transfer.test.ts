@@ -361,6 +361,23 @@ describe('planTransfer: variants, shapes, and legacy keys', () => {
       { key: 'old_temperature', change: { kind: 'remove' } },
     ]);
   });
+
+  it('replaces a key an old value rule renames, the way OrcaSlicer reads the file', () => {
+    const legacyKeys: LegacyKeys = { obsolete: new Set(), renamed: new Map() };
+    const processTarget = target(doc('Old', { wall_filament: '2' }, 'process'), undefined, {
+      rules: { owned: new Set(['outer_wall_filament_id']), perVariant: new Set() },
+      legacyKeys,
+    });
+    const third = resolveChain([doc('New', { outer_wall_filament_id: '3' }, 'process')], {
+      legacyKeys,
+    });
+
+    const plan = planTransfer(third, ['outer_wall_filament_id'], [processTarget], { legacyKeys });
+    expect(plan.targets[0]!.changes).toEqual([
+      { key: 'outer_wall_filament_id', change: { kind: 'set', value: '3' } },
+      { key: 'wall_filament', change: { kind: 'remove' } },
+    ]);
+  });
 });
 
 describe('fitToVariants', () => {

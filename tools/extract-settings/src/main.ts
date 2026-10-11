@@ -81,7 +81,7 @@ const enums = [...settings.values()].filter((setting) => setting.enumLabels).len
 console.log(`  ${enums} settings with enum labels`);
 console.log(
   `  ${legacy.obsolete.length} obsolete keys, ${Object.keys(legacy.renamed).length} renames, ` +
-    `${skippedRules} legacy rules not extracted`,
+    `${skippedRules} legacy rules ported by hand (core/resolve/legacy-values.ts)`,
 );
 for (const { key, reason } of values.verbose ? skippedDefaults : []) {
   console.log(`  skipped ${key}: ${reason}`);

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 // Extracts setting metadata from OrcaSlicer's sources.
 //
 // PrintConfig.cpp defines each option as:
@@ -184,8 +185,13 @@ export interface LegacyKeys {
   readonly obsolete: string[];
   /** Old key → current key, for renames that don't also rewrite the value. */
   readonly renamed: Record<string, string>;
-  /** handle_legacy branches not extracted (value rewrites, conditions on the value, ...). */
+  /**
+   * handle_legacy branches not extracted (value rewrites, conditions on the value, ...): core
+   * ports them by hand (legacy-values.ts).
+   */
   readonly skippedRules: number;
+  /** A fingerprint of handle_legacy, to tell when it changes (see legacy-values.ts). */
+  readonly sourceHash: string;
 }
 
 /**
@@ -216,7 +222,10 @@ export function parseLegacyKeys(source: string): LegacyKeys {
       skippedRules++;
     }
   }
-  return { obsolete, renamed, skippedRules };
+  // A fingerprint of the function, so the value rules ported to core (legacy-values.ts) can tell
+  // when OrcaSlicer changes it: whitespace doesn't count.
+  const sourceHash = createHash('sha256').update(body.replace(/\s+/g, '')).digest('hex');
+  return { obsolete, renamed, skippedRules, sourceHash };
 }
 
 /**

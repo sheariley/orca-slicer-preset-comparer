@@ -14,6 +14,7 @@ import {
   valuesEqual,
   type NormalizedValue,
 } from '../normalize/normalize-value.ts';
+import { migrateLegacyValue } from './legacy-values.ts';
 
 /**
  * One resolved setting and where it came from: a preset in the chain, a template one of them
@@ -183,8 +184,9 @@ function resizeToVariants(
 }
 
 /**
- * A document's own entries after legacy migration: obsolete keys dropped, old keys renamed.
- * When a document has both an old key and its replacement, the replacement wins.
+ * A document's own entries after legacy migration: old values rewritten (migrateLegacyValue),
+ * obsolete keys dropped, old keys renamed. When a document has both an old key and its
+ * replacement, the replacement wins.
  */
 function migrateKeys(
   content: Readonly<Record<string, unknown>>,
@@ -193,10 +195,23 @@ function migrateKeys(
   if (!legacyKeys) return Object.entries(content);
   const entries = new Map<string, unknown>();
   for (const [key, raw] of Object.entries(content)) {
+    const migration = isRawValue(raw) ? migrateLegacyValue(key, raw) : undefined;
+    if (migration) {
+      if (migration.key !== null && (migration.key === key || !(migration.key in content))) {
+        entries.set(migration.key, migration.value);
+      }
+      continue;
+    }
     if (legacyKeys.obsolete.has(key)) continue;
     const current = legacyKeys.renamed.get(key);
     if (current === undefined) entries.set(key, raw);
     else if (!(current in content)) entries.set(current, raw);
   }
   return [...entries];
+}
+
+function isRawValue(raw: unknown): raw is RawValue {
+  return (
+    typeof raw === 'string' || (Array.isArray(raw) && raw.every((item) => typeof item === 'string'))
+  );
 }

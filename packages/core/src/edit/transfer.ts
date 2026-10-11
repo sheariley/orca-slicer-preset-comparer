@@ -9,6 +9,7 @@ import {
 import { resizeValue, valuesEqual, type NormalizedValue } from '../normalize/normalize-value.ts';
 import type { KeyRules } from '../ports/ports.ts';
 import type { LegacyKeys, ResolvedProfile } from '../resolve/resolve-chain.ts';
+import { LEGACY_VALUE_RENAMES } from '../resolve/legacy-values.ts';
 
 /** Everything planTransfer needs to know about one target. */
 export interface TransferTarget {
@@ -210,10 +211,14 @@ export function variantIdentities(profile: ResolvedProfile): string[] | undefine
     : [...names];
 }
 
-/** Current key → the old names OrcaSlicer still reads it from. */
+/**
+ * Current key → the old names OrcaSlicer still reads it from: plain renames, and the keys its
+ * value rules rename (see migrateLegacyValue).
+ */
 function oldNamesByKey(legacyKeys: LegacyKeys | undefined): Map<string, string[]> {
   const result = new Map<string, string[]>();
-  for (const [oldName, current] of legacyKeys?.renamed ?? []) {
+  if (!legacyKeys) return result;
+  for (const [oldName, current] of [...legacyKeys.renamed, ...LEGACY_VALUE_RENAMES]) {
     result.set(current, [...(result.get(current) ?? []), oldName]);
   }
   return result;

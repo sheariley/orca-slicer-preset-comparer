@@ -36,6 +36,8 @@ export interface CatalogData {
   readonly legacy?: {
     readonly obsolete: readonly string[];
     readonly renamed: Readonly<Record<string, string>>;
+    /** A fingerprint of handle_legacy (see core's LEGACY_VALUE_RULES_SOURCE_HASH). */
+    readonly sourceHash?: string;
   };
 }
 

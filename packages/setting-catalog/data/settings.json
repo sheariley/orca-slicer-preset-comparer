@@ -731,7 +731,8 @@
       "prime_tower_fillet_wall": "wipe_tower_fillet_wall",
       "extruder_clearance_max_radius": "extruder_clearance_radius",
       "machine_switch_extruder_time": "machine_tool_change_time"
-    }
+    },
+    "sourceHash": "0abc1b0ef076435d86460431c14499d1aa3cf0fefa25e56e12e11d3cab441772"
   },
   "settings": {
     "absolute_correction": {

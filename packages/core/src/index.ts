@@ -4,6 +4,7 @@ export * from './errors/errors.ts';
 export * from './ports/ports.ts';
 export * from './normalize/normalize-value.ts';
 export * from './resolve/resolve-chain.ts';
+export * from './resolve/legacy-values.ts';
 export * from './diff/diff-profiles.ts';
 export * from './serialize/serialize-profile.ts';
 export * from './edit/transfer.ts';
