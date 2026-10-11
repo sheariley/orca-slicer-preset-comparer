@@ -58,7 +58,7 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 - **Never silently drop data from the view.** Keys OrcaSlicer ignores (not in the setting catalog) are hidden by default behind a "Hide unused (N)" toggle (its info tip says what they are) that shows the count, never removed outright.
 - **Highlight changed rows** with the `--c-changed` token, including rows set on only one side.
 - **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. Everything above the table's toolbar is one header row, over an accent rule: the title, the Filament/Process tabs, and the two picker buttons (no labels: "Choose base" and "Choose targets" say what they're for). Narrow windows wrap it.
-- **Remember preferences through `usePreference`** (UI) and `ComparerApp.preferences` (app), which sit on the host's `SettingsStore`. They're conveniences: a store that fails or is missing only costs the remembered value, never an error.
+- **Remember preferences through `usePreference`** (UI) and `ComparerApp.preferences` (app), which sit on the host's `SettingsStore`. They're conveniences: a store that fails or is missing only costs the remembered value, never an error. Remembered: the preset type (`comparer.presetType`), the table's toggles (`table.onlyDifferences`, `table.hideUnused`, `table.groupBySection`), and each picker's "Show system presets" (`basePicker.showSystem`, `targetPicker.showSystem`). Never the presets compared: each start begins with none chosen.
 
 ### Picking presets
 

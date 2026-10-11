@@ -241,7 +241,46 @@ describe('ComparerRoot', () => {
 
       await user.click(screen.getByLabelText('Group by section'));
       expect(sectionTitles()).toEqual([]);
-      expect(settings.saved).toEqual({ 'table.groupBySection': false });
+      expect(settings.saved).toEqual({
+        'table.onlyDifferences': false,
+        'table.groupBySection': false,
+      });
+    });
+  });
+
+  describe('remembering choices', () => {
+    it('remembers the preset type, but not the presets compared', async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings({ 'comparer.presetType': 'process' });
+      renderComparer(false, settings);
+
+      expect(await screen.findByRole('tab', { name: 'Process' })).toHaveAttribute(
+        'aria-selected',
+        'true',
+      );
+      await user.click(screen.getByRole('tab', { name: 'Filament' }));
+      expect(settings.saved).toEqual({ 'comparer.presetType': 'filament' });
+
+      await compare(user, 'PLA', 'PETG');
+      expect(Object.keys(settings.saved)).toEqual(['comparer.presetType']);
+    });
+
+    it("remembers the table's toggles", async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings({
+        'table.onlyDifferences': false,
+        'table.hideUnused': false,
+      });
+      renderComparer(false, settings);
+      await compare(user, 'PLA', 'PETG');
+
+      expect(screen.getByLabelText(/Only differences/)).not.toBeChecked();
+      expect(screen.getByLabelText(/Hide unused/)).not.toBeChecked();
+      expect(within(screen.getByRole('table')).getByText('bambu_only')).toBeInTheDocument();
+
+      await user.click(screen.getByLabelText(/Only differences/));
+      await user.click(screen.getByLabelText(/Hide unused/));
+      expect(settings.saved).toEqual({ 'table.onlyDifferences': true, 'table.hideUnused': true });
     });
   });
 

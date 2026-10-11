@@ -152,10 +152,15 @@ export function DiffView({
   onRemoveTarget?: ((id: string) => void) | undefined;
 }) {
   const app = useComparerApp();
-  const [onlyDifferences, setOnlyDifferences] = useState(true);
+  // The table's toggles are remembered.
+  const [onlyDifferences, setOnlyDifferences] = usePreference(
+    'table.onlyDifferences',
+    true,
+    isBoolean,
+  );
   // Keys the catalog doesn't know are ones OrcaSlicer ignores when it loads a profile
   // (e.g. leftovers from Bambu Studio in bundled profiles).
-  const [hideUnknown, setHideUnknown] = useState(true);
+  const [hideUnknown, setHideUnknown] = usePreference('table.hideUnused', true, isBoolean);
   const [filter, setFilter] = useState('');
   const [order, setOrder] = useState<'ascending' | 'descending'>('ascending');
   // Sections like OrcaSlicer's settings tabs ("Quality › Layer height"), remembered.

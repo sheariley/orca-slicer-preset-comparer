@@ -9,6 +9,7 @@ import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
 import { PresetPickerDialog } from './features/preset-picker/PresetPickerDialog.tsx';
 import { useAsync } from './hooks/useAsync.ts';
 import { useComparerApp } from './hooks/useComparerApp.ts';
+import { usePreference } from './hooks/usePreference.ts';
 
 /** A change that waits for the user to confirm it. */
 interface Confirmation {
@@ -19,6 +20,9 @@ interface Confirmation {
   readonly run: () => void;
 }
 
+const isProfileType = (value: unknown): value is ProfileType =>
+  value === 'filament' || value === 'process';
+
 const TYPES: readonly { type: ProfileType; label: string }[] = [
   { type: 'filament', label: 'Filament' },
   { type: 'process', label: 'Process' },
@@ -26,7 +30,12 @@ const TYPES: readonly { type: ProfileType; label: string }[] = [
 
 export function ComparerScreen() {
   const app = useComparerApp();
-  const [type, setType] = useState<ProfileType>('filament');
+  // The preset type is remembered; the presets compared are not.
+  const [type, setType] = usePreference<ProfileType>(
+    'comparer.presetType',
+    'filament',
+    isProfileType,
+  );
   const [base, setBase] = useState<PresetRef | null>(null);
   const [targets, setTargets] = useState<readonly PresetRef[]>([]);
   // Which picker dialog is open.
