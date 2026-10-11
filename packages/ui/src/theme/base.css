@@ -580,6 +580,11 @@ button.icon-button:hover {
   overflow-wrap: anywhere;
 }
 
+/* The last row has none: what follows (e.g. the target's divider in a list) draws its own. */
+.preview-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+
 .preview-table tbody th {
   font-weight: normal;
 }
@@ -774,6 +779,16 @@ button.sort-button:hover {
 
 .copy-target-head .toggle {
   gap: 8px;
+}
+
+/* Each target's name: bigger than the text around it, smaller than the dialog title (15 px). */
+.copy-target-head strong {
+  font-size: 14px;
+}
+
+/* Indented to line up with the target's name, past its checkbox (16 px + 8 px gap). */
+.copy-targets details {
+  padding-left: 24px;
 }
 
 .copy-targets summary {
