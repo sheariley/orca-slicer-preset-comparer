@@ -1,18 +1,29 @@
 import type { PresetRef } from '@comparer/core';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from '../../components/Dialog.tsx';
 import { isBoolean, usePreference } from '../../hooks/usePreference.ts';
 
-interface TargetPickerDialogProps {
+interface CommonProps {
   /** Every preset of the comparison's type. */
   readonly presets: readonly PresetRef[];
-  /** The base preset, which can't also be a target, so it isn't listed. */
-  readonly base: PresetRef;
-  /** The targets chosen so far. */
+  /** A preset that isn't offered (the base, when choosing targets). */
+  readonly exclude?: PresetRef | null;
+  readonly onCancel: () => void;
+}
+
+/** Choosing the base: one preset, with radio buttons. */
+interface SingleProps extends CommonProps {
+  readonly mode: 'single';
+  readonly chosen: PresetRef | null;
+  readonly onConfirm: (preset: PresetRef) => void;
+}
+
+/** Choosing the targets: any number, with checkboxes and select-all. */
+interface MultipleProps extends CommonProps {
+  readonly mode: 'multiple';
   readonly chosen: readonly PresetRef[];
   /** Replaces the targets, in list order. */
-  readonly onConfirm: (targets: readonly PresetRef[]) => void;
-  readonly onCancel: () => void;
+  readonly onConfirm: (presets: readonly PresetRef[]) => void;
 }
 
 type SortOrder = 'ascending' | 'descending';
@@ -20,25 +31,29 @@ type SortOrder = 'ascending' | 'descending';
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /**
- * Chooses the presets to compare with the base: a table of presets with a checkbox each,
- * sortable by name, filtered by name and (remembered) by whether system presets show. Presets
- * stay chosen while a filter hides them.
+ * Chooses presets from a table sortable by name, filtered by name and (remembered for each mode)
+ * by whether system presets show. One dialog for both pickers: the base (`single`, radio
+ * buttons) and the targets (`multiple`, checkboxes and select-all). A choice stays made while a
+ * filter hides it.
  */
-export function TargetPickerDialog({
-  presets,
-  base,
-  chosen,
-  onConfirm,
-  onCancel,
-}: TargetPickerDialogProps) {
-  const [selected, setSelected] = useState<ReadonlySet<string>>(
-    () => new Set(chosen.map((preset) => preset.id)),
+export function PresetPickerDialog(props: SingleProps | MultipleProps) {
+  const { presets, exclude, onCancel } = props;
+  const multiple = props.mode === 'multiple';
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() =>
+    multiple
+      ? new Set(props.chosen.map((preset) => preset.id))
+      : new Set(props.chosen ? [props.chosen.id] : []),
   );
+  const radioGroup = useId();
   const [text, setText] = useState('');
   const [order, setOrder] = useState<SortOrder>('ascending');
-  const [showSystem, setShowSystem] = usePreference('targetPicker.showSystem', false, isBoolean);
+  const [showSystem, setShowSystem] = usePreference(
+    multiple ? 'targetPicker.showSystem' : 'basePicker.showSystem',
+    false,
+    isBoolean,
+  );
 
-  const candidates = presets.filter((preset) => preset.id !== base.id);
+  const candidates = presets.filter((preset) => preset.id !== exclude?.id);
   const needle = text.trim().toLowerCase();
   const shown = candidates
     .filter(
@@ -56,12 +71,17 @@ export function TargetPickerDialog({
   const hiddenChosen = chosenPresets.length - shownSelected;
 
   const toggle = (ids: readonly string[], on: boolean) => {
-    const next = new Set(selected);
+    const next = new Set(multiple ? selected : []);
     for (const id of ids) {
       if (on) next.add(id);
       else next.delete(id);
     }
     setSelected(next);
+  };
+
+  const confirm = () => {
+    if (props.mode === 'multiple') props.onConfirm(chosenPresets);
+    else if (chosenPresets[0]) props.onConfirm(chosenPresets[0]);
   };
 
   const selectAll = useRef<HTMLInputElement>(null);
@@ -73,7 +93,7 @@ export function TargetPickerDialog({
 
   return (
     <Dialog
-      title="Choose targets"
+      title={multiple ? 'Choose targets' : 'Choose the base preset'}
       wide
       onClose={onCancel}
       actions={
@@ -81,8 +101,13 @@ export function TargetPickerDialog({
           <button type="button" onClick={onCancel}>
             Cancel
           </button>
-          <button type="button" className="primary" onClick={() => onConfirm(chosenPresets)}>
-            Compare
+          <button
+            type="button"
+            className="primary"
+            disabled={!multiple && chosenPresets.length === 0}
+            onClick={confirm}
+          >
+            {multiple ? 'Compare' : 'Choose'}
           </button>
         </>
       }
@@ -105,8 +130,10 @@ export function TargetPickerDialog({
         </label>
       </div>
       <p className="target-count" role="status">
-        {plural(chosenPresets.length, 'preset')} chosen
-        {hiddenChosen > 0 && ` (${hiddenChosen} not shown)`}
+        {multiple
+          ? `${plural(chosenPresets.length, 'preset')} chosen`
+          : `Chosen: ${chosenPresets[0]?.name ?? 'none'}`}
+        {hiddenChosen > 0 && (multiple ? ` (${hiddenChosen} not shown)` : ' (not shown)')}
       </p>
       <div className="target-table-scroll">
         <table className="target-table">
@@ -117,14 +144,18 @@ export function TargetPickerDialog({
           <thead>
             <tr>
               <th scope="col" className="select-cell">
-                <input
-                  ref={selectAll}
-                  type="checkbox"
-                  aria-label="Choose all shown presets"
-                  checked={shown.length > 0 && shownSelected === shown.length}
-                  disabled={shown.length === 0}
-                  onChange={(event) => toggle(shownIds, event.target.checked)}
-                />
+                {multiple ? (
+                  <input
+                    ref={selectAll}
+                    type="checkbox"
+                    aria-label="Choose all shown presets"
+                    checked={shown.length > 0 && shownSelected === shown.length}
+                    disabled={shown.length === 0}
+                    onChange={(event) => toggle(shownIds, event.target.checked)}
+                  />
+                ) : (
+                  <span className="visually-hidden">Chosen</span>
+                )}
               </th>
               <th scope="col" aria-sort={order}>
                 <button
@@ -155,7 +186,8 @@ export function TargetPickerDialog({
               <tr key={preset.id} data-selected={selected.has(preset.id) || undefined}>
                 <td className="select-cell">
                   <input
-                    type="checkbox"
+                    type={multiple ? 'checkbox' : 'radio'}
+                    name={multiple ? undefined : radioGroup}
                     aria-label={`Choose ${preset.name}`}
                     checked={selected.has(preset.id)}
                     onChange={(event) => toggle([preset.id], event.target.checked)}

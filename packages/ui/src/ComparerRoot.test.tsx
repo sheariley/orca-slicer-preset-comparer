@@ -30,12 +30,25 @@ const documents = [
 
 type User = ReturnType<typeof userEvent.setup>;
 
-/** The button that opens the target picker: "Choose targets", or how many are chosen. */
-const TARGETS_BUTTON = /^(Choose targets|\d+ targets? chosen)$/;
+/** The button that opens the target picker: "Choose targets", the target, or how many. */
+const TARGETS_BUTTON = /^(Choose targets|Target: .+|\d+ targets chosen)$/;
+
+/** The button that opens the base picker: "Choose base", or the base's name. */
+const BASE_BUTTON = /^(Choose base|Base: .+)$/;
+
+/** Picks `name` as the base in the base picker (showing system presets if it needs to). */
+async function chooseBase(user: User, name: string) {
+  await user.click(await screen.findByRole('button', { name: BASE_BUTTON }));
+  const dialog = screen.getByRole('dialog', { name: 'Choose the base preset' });
+  const radio = () => within(dialog).queryByRole('radio', { name: `Choose ${name}` });
+  if (!radio()) await user.click(within(dialog).getByLabelText('Show system presets'));
+  await user.click(radio()!);
+  await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+}
 
 /** Compares `base` with `targets`, chosen in the target picker. */
 async function compare(user: User, base: string, ...targets: string[]) {
-  await user.selectOptions(await screen.findByLabelText('Base'), base);
+  await chooseBase(user, base);
   await user.click(screen.getByRole('button', { name: TARGETS_BUTTON }));
   const dialog = screen.getByRole('dialog', { name: 'Choose targets' });
   for (const name of targets) {
@@ -163,7 +176,7 @@ describe('ComparerRoot', () => {
       expect(hide).toHaveAttribute('aria-expanded', 'true');
       await user.click(hide);
 
-      expect(screen.getByLabelText('Base')).not.toBeVisible();
+      expect(screen.getByRole('button', { name: BASE_BUTTON, hidden: true })).not.toBeVisible();
       // The type tabs share the title's row, so they stay.
       expect(screen.getByRole('tab', { name: 'Filament' })).toBeVisible();
       expect(document.querySelector('.selection-summary')).toHaveTextContent('PLA vs PETG');
@@ -174,7 +187,7 @@ describe('ComparerRoot', () => {
       expect(show).toHaveAttribute('aria-expanded', 'false');
       await user.click(show);
 
-      expect(screen.getByLabelText('Base')).toBeVisible();
+      expect(screen.getByRole('button', { name: BASE_BUTTON })).toBeVisible();
       expect(settings.saved).toEqual({ 'layout.hidePresets': false });
     });
 
@@ -186,13 +199,42 @@ describe('ComparerRoot', () => {
       await compare(user, 'PLA', 'PETG');
 
       expect(await screen.findByRole('button', { name: 'Show presets' })).toBeInTheDocument();
-      expect(screen.getByLabelText('Base')).not.toBeVisible();
+      expect(screen.getByRole('button', { name: BASE_BUTTON, hidden: true })).not.toBeVisible();
+    });
+  });
+
+  describe('choosing the base', () => {
+    it('picks one preset from the same kind of table, without multi-select', async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings();
+      renderComparer(false, settings);
+      await user.click(await screen.findByRole('button', { name: 'Choose base' }));
+      const dialog = screen.getByRole('dialog', { name: 'Choose the base preset' });
+
+      expect(within(dialog).queryByRole('checkbox', { name: /^Choose / })).not.toBeInTheDocument();
+      expect(
+        within(dialog)
+          .getAllByRole('radio')
+          .map((radio) => radio.getAttribute('aria-label')),
+      ).toEqual(['Choose ABS', 'Choose PETG', 'Choose PLA']);
+      expect(within(dialog).getByRole('button', { name: 'Choose' })).toBeDisabled();
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      expect(settings.saved).toEqual({ 'basePicker.showSystem': true });
+      await user.type(within(dialog).getByRole('searchbox'), 'generic');
+      await user.click(within(dialog).getByRole('radio', { name: 'Choose Generic PLA' }));
+      expect(dialog).toHaveTextContent('Chosen: Generic PLA');
+      await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+
+      // The name may be cut short, so its info tip shows it in full.
+      expect(screen.getByRole('button', { name: 'Base: Generic PLA' })).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'About the base preset' }));
+      expect(screen.getByRole('tooltip')).toHaveTextContent('Generic PLA');
     });
   });
 
   describe('choosing targets', () => {
     async function openPicker(user: User) {
-      await user.selectOptions(await screen.findByLabelText('Base'), 'PLA');
+      await chooseBase(user, 'PLA');
       await user.click(screen.getByRole('button', { name: TARGETS_BUTTON }));
       return screen.getByRole('dialog', { name: 'Choose targets' });
     }
@@ -207,7 +249,7 @@ describe('ComparerRoot', () => {
 
       expect(await screen.findByRole('button', { name: TARGETS_BUTTON })).toBeDisabled();
       expect(screen.getByText('Choose a base preset first')).toBeInTheDocument();
-      await user.selectOptions(screen.getByLabelText('Base'), 'PLA');
+      await chooseBase(user, 'PLA');
       expect(screen.getByRole('button', { name: TARGETS_BUTTON })).toBeEnabled();
     });
 

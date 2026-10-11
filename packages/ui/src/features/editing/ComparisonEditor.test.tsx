@@ -106,8 +106,21 @@ function fakeCloseGuard() {
 
 type User = ReturnType<typeof userEvent.setup>;
 
-/** The button that opens the target picker: "Choose targets", or how many are chosen. */
-const TARGETS_BUTTON = /^(Choose targets|\d+ targets? chosen)$/;
+/** The button that opens the target picker: "Choose targets", the target, or how many. */
+const TARGETS_BUTTON = /^(Choose targets|Target: .+|\d+ targets chosen)$/;
+
+/** The button that opens the base picker: "Choose base", or the base's name. */
+const BASE_BUTTON = /^(Choose base|Base: .+)$/;
+
+/** Picks `name` as the base in the base picker (showing system presets if it needs to). */
+async function chooseBase(user: User, name: string) {
+  await user.click(await screen.findByRole('button', { name: BASE_BUTTON }));
+  const dialog = screen.getByRole('dialog', { name: 'Choose the base preset' });
+  const radio = () => within(dialog).queryByRole('radio', { name: `Choose ${name}` });
+  if (!radio()) await user.click(within(dialog).getByLabelText('Show system presets'));
+  await user.click(radio()!);
+  await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
+}
 
 /** Ticks `names` in the target picker (showing system presets if one is needed). */
 async function chooseTargets(user: User, names: readonly string[]) {
@@ -122,7 +135,7 @@ async function chooseTargets(user: User, names: readonly string[]) {
 }
 
 async function compare(user: User, base: string, ...targets: string[]) {
-  await user.selectOptions(await screen.findByLabelText('Base'), base);
+  await chooseBase(user, base);
   await chooseTargets(user, targets);
   return screen.findByRole('table');
 }
@@ -382,16 +395,16 @@ describe('editing', () => {
     await compare(user, 'PLA', 'PETG');
     await copy(user, 'Nozzle temperature');
 
-    await user.selectOptions(screen.getByLabelText('Base'), 'ASA');
+    await chooseBase(user, 'ASA');
     const dialog = screen.getByRole('dialog', { name: 'Discard unsaved changes?' });
-    expect(dialog).toHaveTextContent('Choosing another base preset closes this comparison');
+    expect(dialog).toHaveTextContent('Choosing another base preset or type closes this comparison');
     await user.click(within(dialog).getByRole('button', { name: 'Keep editing' }));
-    expect(screen.getByLabelText('Base')).toHaveValue('PLA');
+    expect(screen.getByRole('button', { name: 'Base: PLA' })).toBeInTheDocument();
     expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
 
-    await user.selectOptions(screen.getByLabelText('Base'), 'ASA');
+    await chooseBase(user, 'ASA');
     await user.click(screen.getByRole('button', { name: 'Discard changes' }));
-    expect(screen.getByLabelText('Base')).toHaveValue('ASA');
+    expect(await screen.findByRole('button', { name: 'Base: ASA' })).toBeInTheDocument();
     expect(await screen.findByText('No unsaved changes')).toBeInTheDocument();
     // PETG is still a target.
     expect(
@@ -524,7 +537,7 @@ describe('editing', () => {
       await user.click(screen.getByRole('button', { name: 'Discard changes' }));
       expect(screen.queryByRole('columnheader', { name: /^ASA/ })).not.toBeInTheDocument();
       expect(screen.getByText('1 unsaved change')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: '1 target chosen' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Target: Nylon' })).toBeInTheDocument();
 
       // Without unsaved changes, it goes at once; the base stays open on its own.
       await user.click(screen.getByRole('button', { name: 'Undo: Copy 1 setting to 2 presets' }));
@@ -532,7 +545,7 @@ describe('editing', () => {
       expect(screen.getByText('Choose targets to compare with PLA.')).toBeInTheDocument();
     });
 
-    it('clears every target at once, asking first if any has unsaved changes', async () => {
+    it('clears every target at once, after asking', async () => {
       const { user } = setup();
       const clear = await screen.findByRole('button', { name: 'Clear targets' });
       expect(clear).toBeDisabled();
@@ -540,16 +553,39 @@ describe('editing', () => {
       await copy(user, 'Nozzle temperature');
 
       await user.click(screen.getByRole('button', { name: 'Clear targets' }));
-      const dialog = screen.getByRole('dialog', { name: 'Discard unsaved changes?' });
+      let dialog = screen.getByRole('dialog', { name: 'Clear the targets?' });
       expect(dialog).toHaveTextContent(
-        'Taking ASA, Nylon out of the comparison loses their unsaved changes.',
+        'This takes every target out of the comparison, and their unsaved changes are lost.',
       );
-      await user.click(within(dialog).getByRole('button', { name: 'Discard changes' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+      expect(screen.getByRole('button', { name: '2 targets chosen' })).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Clear targets' }));
+      dialog = screen.getByRole('dialog', { name: 'Clear the targets?' });
+      await user.click(within(dialog).getByRole('button', { name: 'Clear' }));
 
       expect(screen.getByText('Choose targets to compare with PLA.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Choose targets' })).toBeEnabled();
       expect(screen.getByRole('button', { name: 'Clear targets' })).toBeDisabled();
       expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+    });
+
+    it('clears the base and the targets together, after asking', async () => {
+      const { user } = setup();
+      expect(await screen.findByRole('button', { name: 'Clear base' })).toBeDisabled();
+      await compare(user, 'PLA', 'ASA');
+      await copy(user, 'Nozzle temperature');
+
+      await user.click(screen.getByRole('button', { name: 'Clear base' }));
+      const dialog = screen.getByRole('dialog', { name: 'Clear the base preset?' });
+      expect(dialog).toHaveTextContent(
+        'Clearing the base also clears the targets, and the unsaved changes are lost.',
+      );
+      await user.click(within(dialog).getByRole('button', { name: 'Clear' }));
+
+      expect(screen.getByRole('button', { name: 'Choose base' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Choose targets' })).toBeDisabled();
+      expect(screen.queryByRole('table')).not.toBeInTheDocument();
     });
 
     it('opens targets added later, keeping the unsaved changes', async () => {

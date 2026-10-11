@@ -5,11 +5,19 @@ import { ErrorMessage } from './components/ErrorMessage.tsx';
 import { ChevronIcon, CloseIcon, IconButton } from './components/IconButton.tsx';
 import { InfoTip } from './components/InfoTip.tsx';
 import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
-import { PresetPicker } from './features/preset-picker/PresetPicker.tsx';
-import { TargetPickerDialog } from './features/preset-picker/TargetPickerDialog.tsx';
+import { PresetPickerDialog } from './features/preset-picker/PresetPickerDialog.tsx';
 import { useAsync } from './hooks/useAsync.ts';
 import { useComparerApp } from './hooks/useComparerApp.ts';
 import { isBoolean, usePreference } from './hooks/usePreference.ts';
+
+/** A change that waits for the user to confirm it. */
+interface Confirmation {
+  readonly title: string;
+  readonly message: string;
+  readonly confirmLabel: string;
+  readonly cancelLabel: string;
+  readonly run: () => void;
+}
 
 const TYPES: readonly { type: ProfileType; label: string }[] = [
   { type: 'filament', label: 'Filament' },
@@ -21,18 +29,22 @@ export function ComparerScreen() {
   const [type, setType] = useState<ProfileType>('filament');
   const [base, setBase] = useState<PresetRef | null>(null);
   const [targets, setTargets] = useState<readonly PresetRef[]>([]);
-  const [choosingTargets, setChoosingTargets] = useState(false);
+  // Which picker dialog is open.
+  const [picking, setPicking] = useState<'base' | 'targets' | null>(null);
 
   // The presets with unsaved changes (ids), as the editor reports them.
   const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(new Set());
   const dirty = unsaved.size > 0;
-  // A change waiting for the user to confirm discarding unsaved changes: closing the comparison
-  // or the window, or taking targets with unsaved changes out (`names`).
-  const [pendingChange, setPendingChange] = useState<
-    | { readonly run: () => void; readonly reason: 'presets' | 'close' }
-    | { readonly run: () => void; readonly reason: 'targets'; readonly names: readonly string[] }
-    | null
-  >(null);
+  // A change waiting for the user to confirm it: discarding unsaved changes (closing the
+  // comparison or the window, taking targets out), or clearing the base or the targets.
+  const [pendingChange, setPendingChange] = useState<Confirmation | null>(null);
+  const discardChanges = (run: () => void, message: string): Confirmation => ({
+    title: 'Discard unsaved changes?',
+    message,
+    confirmLabel: 'Discard changes',
+    cancelLabel: 'Keep editing',
+    run,
+  });
 
   // Bumped when saving creates presets, so the pickers list them.
   const [listVersion, setListVersion] = useState(0);
@@ -56,13 +68,38 @@ export function ComparerScreen() {
     const losing = targets.filter((target) => !kept.has(target.id) && unsaved.has(target.id));
     if (losing.length === 0) setTargets(next);
     else {
-      setPendingChange({
-        run: () => setTargets(next),
-        reason: 'targets',
-        names: losing.map((target) => target.name),
-      });
+      const names = losing.map((target) => target.name);
+      setPendingChange(
+        discardChanges(
+          () => setTargets(next),
+          `Taking ${names.join(', ')} out of the comparison loses ${names.length === 1 ? 'its' : 'their'} unsaved changes.`,
+        ),
+      );
     }
   };
+  /** Clears the base, and with it the targets, after the user confirms. */
+  const clearBase = () =>
+    setPendingChange({
+      title: 'Clear the base preset?',
+      message: `Clearing the base also clears the targets${dirty ? ', and the unsaved changes are lost' : ''}.`,
+      confirmLabel: 'Clear',
+      cancelLabel: 'Cancel',
+      run: () => {
+        setBase(null);
+        setTargets([]);
+        setPicks((count) => count + 1);
+        setUnsaved(new Set());
+      },
+    });
+  /** Clears the targets, after the user confirms. */
+  const clearTargets = () =>
+    setPendingChange({
+      title: 'Clear the targets?',
+      message: `This takes every target out of the comparison${targets.some((target) => unsaved.has(target.id)) ? ', and their unsaved changes are lost' : ''}.`,
+      confirmLabel: 'Clear',
+      cancelLabel: 'Cancel',
+      run: () => setTargets([]),
+    });
   const onPresetCreated = useCallback((system: PresetRef, created: PresetRef) => {
     setBase((current) => (current?.id === system.id ? created : current));
     setTargets((current) => current.map((target) => (target.id === system.id ? created : target)));
@@ -72,8 +109,14 @@ export function ComparerScreen() {
 
   /** Runs a change that would close the current comparison, confirming first if it has edits. */
   const leaveComparison = (change: () => void) => {
-    if (dirty) setPendingChange({ run: change, reason: 'presets' });
-    else change();
+    if (dirty) {
+      setPendingChange(
+        discardChanges(
+          change,
+          'Choosing another base preset or type closes this comparison, and its unsaved changes are lost.',
+        ),
+      );
+    } else change();
   };
   // Closing the window (where the host can intercept it) asks first too.
   const dirtyRef = useRef(dirty);
@@ -85,7 +128,13 @@ export function ComparerScreen() {
     if (!guard) return;
     return guard.onCloseRequested(() => {
       if (!dirtyRef.current) return true;
-      setPendingChange({ run: () => guard.close(), reason: 'close' });
+      setPendingChange({
+        title: 'Discard unsaved changes?',
+        message: 'Closing the window loses the unsaved changes.',
+        confirmLabel: 'Close without saving',
+        cancelLabel: 'Keep editing',
+        run: () => guard.close(),
+      });
       return false;
     });
   }, [app]);
@@ -146,41 +195,45 @@ export function ComparerScreen() {
             <ErrorMessage error={presets.error} />
           ) : (
             <div className="pickers">
-              <PresetPicker label="Base" presets={presetList} value={base} onChange={pickBase} />
-              <div className="picker">
-                <span className="picker-label" id={`${selectionId}-targets`}>
-                  Targets
-                </span>
-                <div className="targets-control">
-                  {/* The targets show as the table's columns, so the button only counts them. */}
-                  <div className="button-group">
-                    <button
-                      type="button"
-                      {...(base === null
-                        ? { 'aria-describedby': `${selectionId}-targets-hint` }
-                        : {})}
-                      // Targets are compared with the base, so the base comes first.
-                      disabled={presets.status !== 'done' || base === null}
-                      onClick={() => setChoosingTargets(true)}
-                    >
-                      {targets.length === 0
-                        ? 'Choose targets'
-                        : `${targets.length} ${targets.length === 1 ? 'target' : 'targets'} chosen`}
-                    </button>
-                    <IconButton
-                      label="Clear targets"
-                      icon={<CloseIcon />}
-                      disabled={targets.length === 0}
-                      onClick={() => changeTargets([])}
-                    />
-                  </div>
-                  {base === null && (
-                    <span className="targets-hint" id={`${selectionId}-targets-hint`}>
-                      Choose a base preset first
-                    </span>
-                  )}
-                </div>
-              </div>
+              <PresetSelection
+                label="Base"
+                text={base?.name ?? 'Choose base'}
+                name={base ? `Base: ${base.name}` : 'Choose base'}
+                fullName={base?.name}
+                aboutSubject="the base preset"
+                disabled={presets.status !== 'done'}
+                onChoose={() => setPicking('base')}
+                clearLabel="Clear base"
+                canClear={base !== null}
+                onClear={clearBase}
+              />
+              {/* The targets show as the table's columns, so the button names one or counts them. */}
+              <PresetSelection
+                label="Targets"
+                text={
+                  targets.length === 0
+                    ? 'Choose targets'
+                    : targets.length === 1
+                      ? targets[0]!.name
+                      : `${targets.length} targets chosen`
+                }
+                name={
+                  targets.length === 0
+                    ? 'Choose targets'
+                    : targets.length === 1
+                      ? `Target: ${targets[0]!.name}`
+                      : `${targets.length} targets chosen`
+                }
+                fullName={targets.length === 1 ? targets[0]!.name : undefined}
+                aboutSubject="the target"
+                // Targets are compared with the base, so the base comes first.
+                disabled={presets.status !== 'done' || base === null}
+                hint={base === null ? 'Choose a base preset first' : undefined}
+                onChoose={() => setPicking('targets')}
+                clearLabel="Clear targets"
+                canClear={targets.length > 0}
+                onClear={clearTargets}
+              />
             </div>
           )}
         </div>
@@ -214,27 +267,40 @@ export function ComparerScreen() {
         <p className="status">Choose a base preset and the targets to compare it with.</p>
       )}
 
-      {choosingTargets && base && (
-        <TargetPickerDialog
+      {picking === 'base' && (
+        <PresetPickerDialog
+          mode="single"
           presets={presetList}
-          base={base}
+          chosen={base}
+          onConfirm={(next) => {
+            setPicking(null);
+            if (next.id !== base?.id) pickBase(next);
+          }}
+          onCancel={() => setPicking(null)}
+        />
+      )}
+      {picking === 'targets' && base && (
+        <PresetPickerDialog
+          mode="multiple"
+          presets={presetList}
+          exclude={base}
           chosen={targets}
           onConfirm={(next) => {
-            setChoosingTargets(false);
+            setPicking(null);
             changeTargets(next);
           }}
-          onCancel={() => setChoosingTargets(false)}
+          onCancel={() => setPicking(null)}
         />
       )}
 
       {pendingChange && (
         <Dialog
-          title="Discard unsaved changes?"
+          title={pendingChange.title}
           onClose={() => setPendingChange(null)}
           actions={
             <>
               <button type="button" onClick={() => setPendingChange(null)}>
-                Keep editing
+                {pendingChange.cancelLabel}
               </button>
               <button
                 type="button"
@@ -244,20 +310,80 @@ export function ComparerScreen() {
                   setPendingChange(null);
                 }}
               >
-                {pendingChange.reason === 'close' ? 'Close without saving' : 'Discard changes'}
+                {pendingChange.confirmLabel}
               </button>
             </>
           }
         >
-          <p>
-            {pendingChange.reason === 'close'
-              ? 'Closing the window loses the unsaved changes.'
-              : pendingChange.reason === 'targets'
-                ? `Taking ${pendingChange.names.join(', ')} out of the comparison loses ${pendingChange.names.length === 1 ? 'its' : 'their'} unsaved changes.`
-                : 'Choosing another base preset closes this comparison, and its unsaved changes are lost.'}
-          </p>
+          <p>{pendingChange.message}</p>
         </Dialog>
       )}
+    </div>
+  );
+}
+
+/**
+ * A picker's button and its clear button, joined. A long preset name is cut short with an
+ * ellipsis; its info tip shows it in full.
+ */
+function PresetSelection({
+  label,
+  text,
+  name,
+  fullName,
+  aboutSubject,
+  disabled,
+  hint,
+  onChoose,
+  clearLabel,
+  canClear,
+  onClear,
+}: {
+  label: string;
+  /** The button's text: the chosen preset's name, a count, or what to do. */
+  text: string;
+  /** The button's accessible name (its text, plus what it's for). */
+  name: string;
+  /** A chosen preset's full name, for the info tip. */
+  fullName?: string | undefined;
+  aboutSubject: string;
+  disabled: boolean;
+  hint?: string | undefined;
+  onChoose: () => void;
+  clearLabel: string;
+  canClear: boolean;
+  onClear: () => void;
+}) {
+  const hintId = useId();
+  return (
+    <div className="picker">
+      <span className="picker-label">{label}</span>
+      <div className="selection-control">
+        <div className="button-group">
+          <button
+            type="button"
+            className="selection-button"
+            aria-label={name}
+            {...(hint ? { 'aria-describedby': hintId } : {})}
+            disabled={disabled}
+            onClick={onChoose}
+          >
+            <span className="selection-text">{text}</span>
+          </button>
+          <IconButton
+            label={clearLabel}
+            icon={<CloseIcon />}
+            disabled={!canClear}
+            onClick={onClear}
+          />
+        </div>
+        {fullName && <InfoTip subject={aboutSubject} content={fullName} />}
+        {hint && (
+          <span className="selection-hint" id={hintId}>
+            {hint}
+          </span>
+        )}
+      </div>
     </div>
   );
 }

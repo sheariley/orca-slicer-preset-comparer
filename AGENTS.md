@@ -47,7 +47,8 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 ### Comparing
 
 - **Base and targets side by side.** A setting column, the base preset's values, then one column per target, all value columns of equal width, under a sticky header naming each preset. The table is at least wide enough for every value column (`--targets` in `base.css`), so many targets scroll sideways while the selection, setting, and base columns stay pinned (sticky); below 768 px wide they unpin and scroll with the rest. In a row that differs, a target value that matches the base is muted. Long values wrap instead of overflowing.
-- **Choose targets in the target picker** (`TargetPickerDialog`), once a base is chosen. Its button counts the targets ("3 targets chosen") rather than listing them, since the table's columns name them. The picker is a table of the type's presets (not the base) with a checkbox each and a Name column that sorts from its header, filtered by name and by "Show system presets" (off by default, remembered as `targetPicker.showSystem`). Each target's column header can also take it out of the comparison.
+- **Choose the base and the targets in the same picker dialog** (`PresetPickerDialog`): a table of the type's presets with a Name column that sorts from its header, filtered by name and by "Show system presets" (off by default, remembered separately for each picker as `basePicker.showSystem` and `targetPicker.showSystem`). For the base it picks one preset (radio buttons); for the targets, any number (checkboxes and select-all), never the base, and only once a base is chosen. Features planned for one picker (hiding templates, filtering by vendor and printer, ...) go into both.
+- **The picker buttons say what's chosen.** The base button shows the base's name, and the targets button the target's name when there's one, or a count ("3 targets chosen"), since the table's columns name them. A name that doesn't fit on one line is cut short with an ellipsis, and an info tip next to the button shows it in full. Each button has a joined clear button (an "X"). Clearing asks first: clearing the base clears the targets too, and either one says when unsaved changes would be lost. Each target's column header can also take it out of the comparison.
 - **Show only differences by default** (rows where any target differs from the base), with a toggle that shows everything. The toggle shows the count of differences.
 - **Filter by setting name,** matching both OrcaSlicer's label and the raw key.
 - **Label settings the way OrcaSlicer does.** Show OrcaSlicer's label (preferring its full label over the short tab label), and the raw key underneath in a muted monospace style. Show the key only when it differs from the label. Group settings the way OrcaSlicer's tabs do (not built yet).
@@ -55,12 +56,12 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 - **Show where every value came from.** Its tooltip (hover, plus the info icon) names the preset that set it. Built-in OrcaSlicer defaults are visually distinct (muted, italic) and say so.
 - **Never silently drop data from the view.** Keys OrcaSlicer ignores (not in the setting catalog) are hidden by default behind a "Hide settings OrcaSlicer doesn't use (N)" toggle that shows the count, never removed outright.
 - **Highlight changed rows** with the `--c-changed` token, including rows set on only one side.
-- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. The header row holds the title and the Filament/Process tabs. While comparing, a small chevron button centered on the accent rule under the pickers ("Hide presets" / "Show presets", as its tooltip and accessible name) folds the pickers into a one-line summary in the header ("PLA vs PETG, ABS"), and the choice is remembered. The "Choose targets" button has a joined clear button (an "X") that takes every target out, asking first if any has unsaved changes.
+- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. The header row holds the title and the Filament/Process tabs. While comparing, a small chevron button centered on the accent rule under the pickers ("Hide presets" / "Show presets", as its tooltip and accessible name) folds the pickers into a one-line summary in the header ("PLA vs PETG, ABS"), and the choice is remembered.
 - **Remember preferences through `usePreference`** (UI) and `ComparerApp.preferences` (app), which sit on the host's `SettingsStore`. They're conveniences: a store that fails or is missing only costs the remembered value, never an error.
 
 ### Picking presets
 
-- **Browse, don't type.** Pick presets from lists of system and user presets, filterable by vendor and printer, or open a file. Never ask for a path.
+- **Browse, don't type.** Pick presets from lists of system and user presets (`PresetPickerDialog`), filterable by vendor and printer, or open a file. Never ask for a path.
 - **Make every option identifiable.** Show the origin (vendor or "User") with each name. When the same name appears more than once (e.g. in two user folders), add whatever tells them apart.
 - **Hide non-selectable templates** (`instantiation: "false"`) by default.
 
@@ -182,7 +183,7 @@ orca-slicer-profile-comparer/
 │   │   └── src/
 │   │       ├── ComparerRoot.tsx    # the whole UI; composition roots render this
 │   │       ├── ComparerScreen.tsx
-│   │       ├── features/       # preset-picker/ (incl. the target picker), diff-view/, editing/, save-flow/; (planned) settings/
+│   │       ├── features/       # preset-picker/ (the base and target picker dialog), diff-view/, editing/, save-flow/; (planned) settings/
 │   │       ├── components/     # shared building blocks: InfoTip, IconButton, Dialog, ErrorMessage
 │   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context
