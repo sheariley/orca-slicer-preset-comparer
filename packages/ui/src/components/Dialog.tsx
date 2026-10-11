@@ -19,6 +19,8 @@ interface DialogProps {
   readonly onClose?: () => void;
   /** Where focus starts; by default, the first focusable element. */
   readonly initialFocus?: RefObject<HTMLElement | null>;
+  /** A wider dialog, for content that needs the room (e.g. bulk copy). */
+  readonly wide?: boolean;
 }
 
 /*
@@ -28,7 +30,7 @@ interface DialogProps {
  * outside press, so clicking an InfoTip's tip (portaled outside the dialog) doesn't close it.
  * Render it only while open.
  */
-export function Dialog({ title, children, actions, onClose, initialFocus }: DialogProps) {
+export function Dialog({ title, children, actions, onClose, initialFocus, wide }: DialogProps) {
   const titleId = useId();
   const {
     refs: { setFloating },
@@ -56,7 +58,7 @@ export function Dialog({ title, children, actions, onClose, initialFocus }: Dial
         <FloatingFocusManager context={context} modal initialFocus={initialFocus ?? 0}>
           <div
             ref={setFloating}
-            className="dialog"
+            className={wide ? 'dialog dialog-wide' : 'dialog'}
             aria-modal="true"
             aria-labelledby={titleId}
             {...getFloatingProps()}

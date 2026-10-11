@@ -50,18 +50,30 @@ export interface EditSession {
   readonly history: EditHistory;
 }
 
+const toLoaded = ({
+  ref,
+  chain,
+  templates = new Map(),
+}: PresetFiles & { readonly ref: PresetRef }) =>
+  [ref.id, { ref, chain, templates, opened: chain[0]! }] as const;
+
 export function createSession(
   presets: readonly (PresetFiles & { readonly ref: PresetRef })[],
 ): EditSession {
-  return {
-    presets: new Map(
-      presets.map(({ ref, chain, templates = new Map() }) => [
-        ref.id,
-        { ref, chain, templates, opened: chain[0]! },
-      ]),
-    ),
-    history: emptyHistory,
-  };
+  return { presets: new Map(presets.map(toLoaded)), history: emptyHistory };
+}
+
+/**
+ * Opens more presets in a session (e.g. the targets of a bulk copy), keeping its history.
+ * Presets that are already open keep their state.
+ */
+export function addToSession(
+  session: EditSession,
+  presets: readonly (PresetFiles & { readonly ref: PresetRef })[],
+): EditSession {
+  const added = presets.filter(({ ref }) => !session.presets.has(ref.id)).map(toLoaded);
+  if (added.length === 0) return session;
+  return { ...session, presets: new Map([...session.presets, ...added]) };
 }
 
 export function presetIn(session: EditSession, id: string): LoadedPreset {

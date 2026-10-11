@@ -24,6 +24,7 @@ import {
   type TransferPlan,
 } from '@comparer/core';
 import {
+  addToSession,
   createSession,
   editedDocument,
   inheritedEdited,
@@ -101,6 +102,11 @@ export interface ComparerApp {
 
   /** Loads presets (with their parent chains and included templates) for editing. */
   openSession(refs: readonly PresetRef[]): Promise<EditSession>;
+  /**
+   * Opens more presets in a session, e.g. the targets of a bulk copy. Presets already open
+   * keep their state, and so does the history.
+   */
+  addPresets(session: EditSession, refs: readonly PresetRef[]): Promise<EditSession>;
   /** Compares two open presets as they currently stand, pending edits included. */
   compareEdited(session: EditSession, left: string, right: string): Comparison;
   /** What a copy would do, without recording it (for previews and "Pin override" choices). */
@@ -186,6 +192,15 @@ export function createComparerApp({
     async openSession(refs) {
       const loaded = await Promise.all(refs.map((ref) => loadPresetDocuments(repository, ref)));
       return createSession(loaded.map((files, index) => ({ ref: refs[index]!, ...files })));
+    },
+
+    async addPresets(session, refs) {
+      const missing = refs.filter((ref) => !session.presets.has(ref.id));
+      const loaded = await Promise.all(missing.map((ref) => loadPresetDocuments(repository, ref)));
+      return addToSession(
+        session,
+        loaded.map((files, index) => ({ ref: missing[index]!, ...files })),
+      );
     },
 
     compareEdited(session, leftId, rightId) {

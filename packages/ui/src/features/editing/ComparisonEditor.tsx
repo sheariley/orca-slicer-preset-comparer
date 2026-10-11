@@ -17,6 +17,7 @@ import { InfoTip } from '../../components/InfoTip.tsx';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
 import { DiffView, type DiffEditing, type Side } from '../diff-view/DiffView.tsx';
 import { settingNames } from '../diff-view/format.ts';
+import { BulkCopyDialog } from '../bulk-copy/BulkCopyDialog.tsx';
 import { SaveDialog } from '../save-flow/SaveDialog.tsx';
 import { SaveResults } from '../save-flow/SaveResults.tsx';
 import { CopyPreviewDialog, type SingleCopy } from './CopyPreviewDialog.tsx';
@@ -50,6 +51,7 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
   const [session, setSession] = useState(initial);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [preview, setPreview] = useState<SingleCopy | null>(null);
+  const [bulk, setBulk] = useState<readonly string[] | null>(null);
   const [save, setSave] = useState<SaveState>({ step: 'idle' });
   const [notice, setNotice] = useState('');
 
@@ -85,7 +87,11 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
     [app, comparison],
   );
   const labelOf = (key: string) => names.get(key) ?? key;
-  const dialogOpen = preview !== null || save.step === 'confirm' || save.step === 'saving';
+  const dialogOpen =
+    preview !== null || bulk !== null || save.step === 'confirm' || save.step === 'saving';
+  /** The selected settings, in the table's order (not the order they were ticked). */
+  const selectedKeys = () =>
+    comparison.rows.map((row) => row.key).filter((key) => selected.has(key));
 
   const apply = (request: SingleCopy, pins: ReadonlyMap<string, boolean>, label?: string) => {
     const { session: next } = app.copy(
@@ -127,10 +133,14 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
     }
   };
 
-  const copySelected = (to: Side) => {
-    // In the table's order, not the order they were ticked.
-    const keys = comparison.rows.map((row) => row.key).filter((key) => selected.has(key));
-    setPreview({ source: ids[other(to)], target: ids[to], keys });
+  const copySelected = (to: Side) =>
+    setPreview({ source: ids[other(to)], target: ids[to], keys: selectedKeys() });
+
+  const applyBulk = (next: EditSession, label: string) => {
+    setSession(next);
+    setSelected(new Set());
+    setBulk(null);
+    setNotice(`${label}. Not saved yet.`);
   };
 
   const undo = () => {
@@ -208,7 +218,17 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
       }
     : undefined;
 
-  const editedCount = edited.left.size + edited.right.size;
+  // Every preset with unsaved changes, including bulk-copy targets outside the two columns.
+  const editedCount = pendingEdits.reduce(
+    (count, { edits }) => count + Object.keys(edits.set ?? {}).length + (edits.remove ?? []).length,
+    0,
+  );
+  const unsavedText =
+    editedCount === 0
+      ? 'No unsaved changes'
+      : pendingEdits.length > 1
+        ? `${plural(editedCount, 'unsaved change')} in ${plural(pendingEdits.length, 'preset')}`
+        : plural(editedCount, 'unsaved change');
   const nextUndo = undoLabel(session);
   const nextRedo = redoLabel(session);
 
@@ -216,9 +236,7 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
     <div className="comparison">
       {canEdit && (
         <div className="edit-toolbar" role="group" aria-label="Editing">
-          <span className="unsaved-count">
-            {editedCount > 0 ? plural(editedCount, 'unsaved change') : 'No unsaved changes'}
-          </span>
+          <span className="unsaved-count">{unsavedText}</span>
           <button
             type="button"
             onClick={undo}
@@ -246,6 +264,13 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
               onClick={() => copySelected(to)}
             />
           ))}
+          <button
+            type="button"
+            onClick={() => setBulk(selectedKeys())}
+            disabled={selected.size === 0}
+          >
+            Copy selected to other presets…
+          </button>
           <span className="toolbar-separator" />
           <button
             type="button"
@@ -280,6 +305,17 @@ export function ComparisonEditor({ initial, left, right, onDirtyChange }: Compar
           request={preview}
           onApply={(pins) => apply(preview, pins, copyLabel(preview))}
           onCancel={() => setPreview(null)}
+        />
+      )}
+      {bulk && (
+        <BulkCopyDialog
+          session={session}
+          left={left}
+          right={right}
+          keys={bulk}
+          nameOf={labelOf}
+          onApply={applyBulk}
+          onCancel={() => setBulk(null)}
         />
       )}
       {(save.step === 'confirm' || save.step === 'saving') && (

@@ -2,7 +2,7 @@
 
 OrcaSlicer Profile Comparer: a cross-platform tool for comparing OrcaSlicer **filament** and **process** profiles in a diff-like view of how their settings differ. It's also an editor. From the diff view, users can copy individual setting values from one profile to another, or bulk-copy settings from one profile to many target profiles at once, and save the changed profiles back to disk. It ships first as a Tauri desktop app and later as an OrcaSlicer plugin, running the same UI and core in both.
 
-**Status:** comparing works end to end (read-only) in the playground, desktop, and plugin builds, and the desktop app has been checked against a real OrcaSlicer data folder on Windows. Editing works in `core` and `app` (copy, undo/redo, save with a result per target), and the desktop host can save user presets (tested on Windows against a real OrcaSlicer folder, including the conflict check and OrcaSlicer's preset lock). The editing UI covers the first milestone: copying between the two compared presets (one click per row, or the selected rows through a preview with "Pin override"), undo/redo, and saving with a confirmation and per-preset results (with recovery from conflicts and a busy OrcaSlicer), plus a warning before closing with unsaved changes. Bulk copy to many targets isn't built yet.
+**Status:** comparing works end to end (read-only) in the playground, desktop, and plugin builds, and the desktop app has been checked against a real OrcaSlicer data folder on Windows. Editing works in `core` and `app` (copy, undo/redo, save with a result per target), and the desktop host can save user presets (tested on Windows against a real OrcaSlicer folder, including the conflict check and OrcaSlicer's preset lock). The editing UI covers the first milestone: copying between the two compared presets (one click per row, or the selected rows through a preview with "Pin override"), undo/redo, and saving with a confirmation and per-preset results (with recovery from conflicts and a busy OrcaSlicer), plus a warning before closing with unsaved changes, and bulk copy from either compared preset to many others (system presets are left out until saving them as user presets is built).
 
 **Open work is tracked in [TASKS.md](TASKS.md).** Check it before starting, and keep it current: add tasks you discover, and mark the ones you finish `[x]`, in the same change.
 
@@ -72,6 +72,7 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
   - Choose targets from the preset browser, with multi-select, filters (vendor, printer, user vs. system), and select-all.
   - Before applying, preview each target: the current value, the new value, and which targets already match and will be skipped.
   - Apply the batch as one undoable step, while letting users drop individual targets or settings from it.
+  - Targets open in the editing session (`ComparerApp.addPresets`) without appearing in the two columns, so the toolbar counts every preset with unsaved changes, and saving covers them all.
   - When the batch includes system presets, ask once whether to create user presets for them, and list which ones that affects.
 
 ### Saving and feedback
@@ -166,7 +167,7 @@ orca-slicer-profile-comparer/
 │   ├── app/                    # use cases, built on core + ports
 │   │   └── src/
 │   │       ├── comparer-app.ts # createComparerApp: the API the UI calls
-│   │       ├── comparer-app.ts # also the editing use cases: openSession, previewCopy, copy, saveChanges
+│   │       ├── comparer-app.ts # also the editing use cases: openSession, addPresets, previewCopy, copy, saveChanges
 │   │       ├── preferences.ts  # Preferences over the SettingsStore port
 │   │       ├── use-cases/      # loadChain, loadTemplates, loadResolved
 │   │       └── session/        # EditSession: opened presets, edit history, pending edits, undo/redo
@@ -176,7 +177,7 @@ orca-slicer-profile-comparer/
 │   │   └── src/
 │   │       ├── ComparerRoot.tsx    # the whole UI; composition roots render this
 │   │       ├── ComparerScreen.tsx
-│   │       ├── features/       # preset-picker/, diff-view/, editing/, save-flow/; (planned) bulk-copy/, settings/
+│   │       ├── features/       # preset-picker/, diff-view/, editing/, save-flow/, bulk-copy/; (planned) settings/
 │   │       ├── components/     # shared building blocks: InfoTip, Dialog, ErrorMessage
 │   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context

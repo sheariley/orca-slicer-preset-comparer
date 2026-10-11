@@ -343,4 +343,44 @@ describe('editing session', () => {
       },
     ]);
   });
+
+  describe('bulk copy to presets outside the comparison', () => {
+    it('opens more presets, copies to all of them as one step, and saves each', async () => {
+      const { host, app, refs } = setup({
+        extra: [
+          user('ASA', { nozzle_temperature: ['250'] }),
+          user('TPU', { nozzle_temperature: ['220'] }),
+        ],
+      });
+      const session = await app.openSession(await refs('PLA', 'PETG'));
+      const edited = app.copy(session, {
+        source: 'PLA',
+        targets: ['PETG'],
+        keys: ['fan_max_speed'],
+      });
+
+      const widened = await app.addPresets(edited.session, await refs('ASA', 'TPU', 'PETG'));
+      // PETG was already open: it keeps its pending copy, and the history is kept.
+      expect([...widened.presets.keys()]).toEqual(['PLA', 'PETG', 'ASA', 'TPU']);
+      expect(pending(widened)).toHaveLength(1);
+
+      const { session: copied } = app.copy(widened, {
+        source: 'PLA',
+        targets: ['ASA', 'TPU'],
+        keys: ['nozzle_temperature'],
+      });
+      expect(pending(copied).map((entry) => entry.target.name)).toEqual(['PETG', 'ASA', 'TPU']);
+      // One step: undo takes back both targets.
+      expect(pending(undoSession(copied)).map((entry) => entry.target.name)).toEqual(['PETG']);
+
+      const { results } = await app.saveChanges(copied);
+      expect(results.map((result) => [result.target.name, result.status])).toEqual([
+        ['PETG', 'saved'],
+        ['ASA', 'saved'],
+        ['TPU', 'saved'],
+      ]);
+      const asa = await host.readDocument((await refs('ASA'))[0]!);
+      expect(asa.content['nozzle_temperature']).toEqual(['210']);
+    });
+  });
 });

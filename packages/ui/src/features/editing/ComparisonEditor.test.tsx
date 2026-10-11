@@ -42,6 +42,9 @@ const documents = [
     print_speed: ['60'],
   }),
   filament('ASA', { nozzle_temperature: ['230'], fan_max_speed: ['60'] }),
+  // Bulk-copy targets: one already matches PLA, one gets left out.
+  filament('TPU', { nozzle_temperature: ['210'], fan_max_speed: ['100'] }),
+  filament('Nylon', { nozzle_temperature: ['260'], fan_max_speed: ['40'] }),
 ];
 
 const LABELS: Record<string, string> = {
@@ -385,5 +388,95 @@ describe('editing', () => {
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Copy selected to Generic PETG/ })).toBeDisabled();
     expect(within(screen.getByRole('table')).getByText('System')).toBeInTheDocument();
+  });
+
+  describe('copying to other presets', () => {
+    async function openBulkCopy(user: ReturnType<typeof userEvent.setup>) {
+      await compare(user, 'PLA', 'PETG');
+      await user.click(screen.getByRole('checkbox', { name: 'Select Nozzle temperature' }));
+      await user.click(screen.getByRole('checkbox', { name: 'Select Fan speed (fan_max_speed)' }));
+      await user.click(screen.getByRole('button', { name: 'Copy selected to other presets…' }));
+      return screen.getByRole('dialog', { name: 'Copy 2 settings to other presets' });
+    }
+
+    it('copies to many presets as one step, after a preview of each', async () => {
+      const { user, fileText } = setup();
+      let dialog = await openBulkCopy(user);
+
+      expect(within(dialog).getByRole('radio', { name: 'Left: PLA' })).toBeChecked();
+      // The source isn't offered as a target.
+      expect(within(dialog).queryByRole('checkbox', { name: /^PLA/ })).not.toBeInTheDocument();
+      await user.selectOptions(within(dialog).getByRole('combobox', { name: 'Origin' }), 'user');
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Select all shown (4)' }));
+      expect(within(dialog).getByRole('checkbox', { name: 'ASA (User)' })).toBeChecked();
+      expect(
+        within(dialog).queryByRole('checkbox', { name: /Generic PETG/ }),
+      ).not.toBeInTheDocument();
+      await user.click(within(dialog).getByRole('button', { name: 'Preview…' }));
+
+      dialog = await screen.findByRole('dialog', { name: 'Copy 2 settings to other presets' });
+      await within(dialog).findByRole('button', { name: 'Back' });
+      const target = (name: string) =>
+        within(dialog).getByRole('checkbox', { name }).closest('li')!;
+      expect(target('ASA')).toHaveTextContent('2 settings change.');
+      expect(target('TPU')).toHaveTextContent('Already matches, so it is skipped.');
+      expect(within(target('TPU')).getByRole('checkbox', { name: 'TPU' })).toBeDisabled();
+
+      // The details show each value now and after.
+      await user.click(within(target('ASA')).getByText('Details'));
+      const nozzle = within(target('ASA')).getByText('Nozzle temperature').closest('tr')!;
+      expect(nozzle).toHaveTextContent(/230.*210/);
+
+      // Leave Nylon out.
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Nylon' }));
+      expect(dialog).toHaveTextContent('From PLA: 2 of 4 presets will change.');
+      await user.click(within(dialog).getByRole('button', { name: 'Copy to 2 presets' }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.getByText('4 unsaved changes in 2 presets')).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent(
+        'Copy 2 settings to 2 presets. Not saved yet.',
+      );
+
+      // One step: undo takes back every target.
+      await user.click(screen.getByRole('button', { name: 'Undo: Copy 2 settings to 2 presets' }));
+      expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: 'Redo: Copy 2 settings to 2 presets' }));
+
+      await user.click(screen.getByRole('button', { name: 'Save…' }));
+      const save = screen.getByRole('dialog', { name: 'Save changes' });
+      expect(save).toHaveTextContent('ASA: Nozzle temperature, Fan speed (fan_max_speed)');
+      await user.click(within(save).getByRole('button', { name: 'Save' }));
+      expect(await screen.findByRole('region', { name: 'Save results' })).toHaveTextContent(
+        'Saved 2 of 2.',
+      );
+      expect(await fileText('ASA')).toMatch(/"fan_max_speed": \[\s*"100"/);
+      expect(await fileText('Nylon')).toContain('"260"');
+    });
+
+    it('lets users pick the source, drop settings, and filter targets; leaves system presets out', async () => {
+      const { user } = setup();
+      const dialog = await openBulkCopy(user);
+
+      await user.click(within(dialog).getByRole('radio', { name: 'Right: PETG' }));
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Fan speed (fan_max_speed)' }));
+      expect(dialog).toHaveTextContent('Settings (1 of 2)');
+      await user.type(within(dialog).getByRole('searchbox', { name: 'Filter presets' }), 'generic');
+      expect(within(dialog).getAllByRole('checkbox', { name: / \((User|V)\)$/ })).toHaveLength(1);
+      await user.click(within(dialog).getByRole('checkbox', { name: 'Generic PETG (V)' }));
+      await user.click(within(dialog).getByRole('button', { name: 'Preview…' }));
+
+      const preview = await screen.findByRole('dialog', {
+        name: 'Copy 1 setting to other presets',
+      });
+      await within(preview).findByRole('button', { name: 'Back' });
+      expect(preview).toHaveTextContent("A system preset, which can't be changed.");
+      expect(within(preview).getByRole('button', { name: 'Copy to 0 presets' })).toBeDisabled();
+
+      // Back keeps the choices.
+      await user.click(within(preview).getByRole('button', { name: 'Back' }));
+      expect(screen.getByRole('radio', { name: 'Right: PETG' })).toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Generic PETG (V)' })).toBeChecked();
+    });
   });
 });
