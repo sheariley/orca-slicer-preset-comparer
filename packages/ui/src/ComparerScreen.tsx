@@ -2,13 +2,13 @@ import type { PresetRef, ProfileType } from '@comparer/core';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from './components/Dialog.tsx';
 import { ErrorMessage } from './components/ErrorMessage.tsx';
-import { ChevronIcon, CloseIcon, IconButton } from './components/IconButton.tsx';
+import { CloseIcon, IconButton } from './components/IconButton.tsx';
 import { InfoTip } from './components/InfoTip.tsx';
+import { useTooltip } from './components/Tooltip.tsx';
 import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
 import { PresetPickerDialog } from './features/preset-picker/PresetPickerDialog.tsx';
 import { useAsync } from './hooks/useAsync.ts';
 import { useComparerApp } from './hooks/useComparerApp.ts';
-import { isBoolean, usePreference } from './hooks/usePreference.ts';
 
 /** A change that waits for the user to confirm it. */
 interface Confirmation {
@@ -150,105 +150,71 @@ export function ComparerScreen() {
 
   const presetList = presets.status === 'done' ? presets.value : [];
 
-  // The pickers can fold away to a summary line, leaving more room for the table.
-  // Only while comparing: with nothing chosen, they're all there is.
-  const selectionId = useId();
-  const [hidePresets, setHidePresets] = usePreference('layout.hidePresets', false, isBoolean);
-  const comparing = base !== null && targets.length > 0;
-  const collapsed = hidePresets && comparing;
-
   return (
     <div className="comparer">
-      <div className="comparer-top">
-        <header className="comparer-header">
-          <h1>Profile Comparer</h1>
-          <div className="type-tabs" role="tablist" aria-label="Profile type">
-            {TYPES.map(({ type: value, label }) => (
-              <button
-                key={value}
-                role="tab"
-                aria-selected={type === value}
-                onClick={() => type !== value && chooseType(value)}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-          {collapsed && base && (
-            <p className="selection-summary">
-              <strong>{base.name}</strong> vs{' '}
-              <strong>{targets.map((target) => target.name).join(', ')}</strong>
-            </p>
-          )}
-          {!app.capabilities.canSave && (
-            <InfoTip
-              subject="read-only mode"
-              content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
+      {/* One row: the title, the type tabs, and the pickers, over an accent rule. */}
+      <header className="comparer-header">
+        <h1>Profile Comparer</h1>
+        <div className="type-tabs" role="tablist" aria-label="Profile type">
+          {TYPES.map(({ type: value, label }) => (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={type === value}
+              onClick={() => type !== value && chooseType(value)}
             >
-              <span className="badge">Read-only</span>
-            </InfoTip>
-          )}
-        </header>
-
-        <div id={selectionId} className="selection" hidden={collapsed}>
-          {presets.status === 'failed' ? (
-            <ErrorMessage error={presets.error} />
-          ) : (
-            <div className="pickers">
-              <PresetSelection
-                label="Base"
-                text={base?.name ?? 'Choose base'}
-                name={base ? `Base: ${base.name}` : 'Choose base'}
-                fullName={base?.name}
-                aboutSubject="the base preset"
-                disabled={presets.status !== 'done'}
-                onChoose={() => setPicking('base')}
-                clearLabel="Clear base"
-                canClear={base !== null}
-                onClear={clearBase}
-              />
-              {/* The targets show as the table's columns, so the button names one or counts them. */}
-              <PresetSelection
-                label="Targets"
-                text={
-                  targets.length === 0
-                    ? 'Choose targets'
-                    : targets.length === 1
-                      ? targets[0]!.name
-                      : `${targets.length} targets chosen`
-                }
-                name={
-                  targets.length === 0
-                    ? 'Choose targets'
-                    : targets.length === 1
-                      ? `Target: ${targets[0]!.name}`
-                      : `${targets.length} targets chosen`
-                }
-                fullName={targets.length === 1 ? targets[0]!.name : undefined}
-                aboutSubject="the target"
-                // Targets are compared with the base, so the base comes first.
-                disabled={presets.status !== 'done' || base === null}
-                hint={base === null ? 'Choose a base preset first' : undefined}
-                onChoose={() => setPicking('targets')}
-                clearLabel="Clear targets"
-                canClear={targets.length > 0}
-                onClear={clearTargets}
-              />
-            </div>
-          )}
+              {label}
+            </button>
+          ))}
         </div>
-        {/* Sits on the accent rule under the pickers. */}
-        {comparing && (
-          <IconButton
-            className="collapse-button"
-            label={collapsed ? 'Show presets' : 'Hide presets'}
-            icon={<ChevronIcon up={!collapsed} />}
-            aria-expanded={!collapsed}
-            aria-controls={selectionId}
-            onClick={() => setHidePresets(!collapsed)}
-          />
+        <PresetSelection
+          text={base?.name ?? 'Choose base'}
+          name={base ? `Base: ${base.name}` : 'Choose base'}
+          fullName={base?.name}
+          aboutSubject="the base preset"
+          disabled={presets.status !== 'done'}
+          onChoose={() => setPicking('base')}
+          clearLabel="Clear base"
+          canClear={base !== null}
+          onClear={clearBase}
+        />
+        {/* The targets show as the table's columns, so the button names one or counts them. */}
+        <PresetSelection
+          text={
+            targets.length === 0
+              ? 'Choose targets'
+              : targets.length === 1
+                ? targets[0]!.name
+                : `${targets.length} targets chosen`
+          }
+          name={
+            targets.length === 0
+              ? 'Choose targets'
+              : targets.length === 1
+                ? `Target: ${targets[0]!.name}`
+                : `${targets.length} targets chosen`
+          }
+          fullName={targets.length === 1 ? targets[0]!.name : undefined}
+          aboutSubject="the target"
+          disabled={presets.status !== 'done'}
+          // Targets are compared with the base, so the base comes first: until then, a click
+          // only says so.
+          blocked={base === null ? 'Choose a base preset first' : undefined}
+          onChoose={() => setPicking('targets')}
+          clearLabel="Clear targets"
+          canClear={targets.length > 0}
+          onClear={clearTargets}
+        />
+        {!app.capabilities.canSave && (
+          <InfoTip
+            subject="read-only mode"
+            content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
+          >
+            <span className="badge">Read-only</span>
+          </InfoTip>
         )}
-      </div>
+      </header>
+      {presets.status === 'failed' && <ErrorMessage error={presets.error} />}
 
       {session.status === 'loading' && <p className="status">Comparing…</p>}
       {session.status === 'failed' && <ErrorMessage error={session.error} />}
@@ -324,22 +290,21 @@ export function ComparerScreen() {
 
 /**
  * A picker's button and its clear button, joined. A long preset name is cut short with an
- * ellipsis; its info tip shows it in full.
+ * ellipsis; its info tip shows it in full. While the picker can't open yet (`blocked`), the
+ * button's tooltip says why, and a click shows it.
  */
 function PresetSelection({
-  label,
   text,
   name,
   fullName,
   aboutSubject,
   disabled,
-  hint,
+  blocked,
   onChoose,
   clearLabel,
   canClear,
   onClear,
 }: {
-  label: string;
   /** The button's text: the chosen preset's name, a count, or what to do. */
   text: string;
   /** The button's accessible name (its text, plus what it's for). */
@@ -348,42 +313,43 @@ function PresetSelection({
   fullName?: string | undefined;
   aboutSubject: string;
   disabled: boolean;
-  hint?: string | undefined;
+  /** Why the picker can't open yet, if it can't. */
+  blocked?: string | undefined;
   onChoose: () => void;
   clearLabel: string;
   canClear: boolean;
   onClear: () => void;
 }) {
-  const hintId = useId();
+  const blockedId = useId();
+  const { setReference, getReferenceProps, show, tooltip } = useTooltip(blocked);
   return (
-    <div className="picker">
-      <span className="picker-label">{label}</span>
-      <div className="selection-control">
-        <div className="button-group">
-          <button
-            type="button"
-            className="selection-button"
-            aria-label={name}
-            {...(hint ? { 'aria-describedby': hintId } : {})}
-            disabled={disabled}
-            onClick={onChoose}
-          >
-            <span className="selection-text">{text}</span>
-          </button>
-          <IconButton
-            label={clearLabel}
-            icon={<CloseIcon />}
-            disabled={!canClear}
-            onClick={onClear}
-          />
-        </div>
-        {fullName && <InfoTip subject={aboutSubject} content={fullName} />}
-        {hint && (
-          <span className="selection-hint" id={hintId}>
-            {hint}
-          </span>
-        )}
+    <div className="selection-control">
+      <div className="button-group">
+        <button
+          ref={setReference}
+          type="button"
+          className="selection-button"
+          aria-label={name}
+          {...(blocked ? { 'aria-describedby': blockedId } : {})}
+          disabled={disabled}
+          {...getReferenceProps({ onClick: () => (blocked ? show() : onChoose()) })}
+        >
+          <span className="selection-text">{text}</span>
+        </button>
+        <IconButton
+          label={clearLabel}
+          icon={<CloseIcon />}
+          disabled={!canClear}
+          onClick={onClear}
+        />
       </div>
+      {fullName && <InfoTip subject={aboutSubject} content={fullName} />}
+      {blocked && (
+        <span className="visually-hidden" id={blockedId}>
+          {blocked}
+        </span>
+      )}
+      {tooltip}
     </div>
   );
 }

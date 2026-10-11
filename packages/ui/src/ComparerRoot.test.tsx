@@ -162,47 +162,6 @@ describe('ComparerRoot', () => {
     expect(await screen.findByText('Read-only')).toBeInTheDocument();
   });
 
-  describe('hiding the presets', () => {
-    it('folds the pickers into a summary line, and back', async () => {
-      const user = userEvent.setup();
-      const settings = memorySettings();
-      renderComparer(false, settings);
-
-      // Nothing to fold away until there's a comparison.
-      expect(screen.queryByRole('button', { name: 'Hide presets' })).not.toBeInTheDocument();
-      await compare(user, 'PLA', 'PETG');
-
-      const hide = screen.getByRole('button', { name: 'Hide presets' });
-      expect(hide).toHaveAttribute('aria-expanded', 'true');
-      await user.click(hide);
-
-      expect(screen.getByRole('button', { name: BASE_BUTTON, hidden: true })).not.toBeVisible();
-      // The type tabs share the title's row, so they stay.
-      expect(screen.getByRole('tab', { name: 'Filament' })).toBeVisible();
-      expect(document.querySelector('.selection-summary')).toHaveTextContent('PLA vs PETG');
-      expect(screen.getByRole('table')).toBeInTheDocument();
-      expect(settings.saved).toEqual({ 'layout.hidePresets': true });
-
-      const show = screen.getByRole('button', { name: 'Show presets' });
-      expect(show).toHaveAttribute('aria-expanded', 'false');
-      await user.click(show);
-
-      expect(screen.getByRole('button', { name: BASE_BUTTON })).toBeVisible();
-      expect(settings.saved).toEqual({ 'layout.hidePresets': false });
-    });
-
-    it('remembers the choice for the next comparison', async () => {
-      const user = userEvent.setup();
-      renderComparer(false, memorySettings({ 'layout.hidePresets': true }));
-
-      // The pickers stay while nothing is compared, then fold away.
-      await compare(user, 'PLA', 'PETG');
-
-      expect(await screen.findByRole('button', { name: 'Show presets' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: BASE_BUTTON, hidden: true })).not.toBeVisible();
-    });
-  });
-
   describe('choosing the base', () => {
     it('picks one preset from the same kind of table, without multi-select', async () => {
       const user = userEvent.setup();
@@ -243,14 +202,25 @@ describe('ComparerRoot', () => {
         .getAllByRole('checkbox', { name: /^Choose (?!all)/ })
         .map((box) => box.getAttribute('aria-label')!.replace('Choose ', ''));
 
-    it('waits for a base preset before targets can be chosen', async () => {
+    it('waits for a base preset before targets can be chosen, and says so', async () => {
       const user = userEvent.setup();
       renderComparer();
+      const button = await screen.findByRole('button', { name: 'Choose targets' });
 
-      expect(await screen.findByRole('button', { name: TARGETS_BUTTON })).toBeDisabled();
-      expect(screen.getByText('Choose a base preset first')).toBeInTheDocument();
+      // The reason is the button's description, and a click shows it as a tooltip.
+      expect(button).toHaveAccessibleDescription('Choose a base preset first');
+      await user.click(button);
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(
+        screen.getByText('Choose a base preset first', { selector: '.info-tip' }),
+      ).toBeVisible();
+
       await chooseBase(user, 'PLA');
-      expect(screen.getByRole('button', { name: TARGETS_BUTTON })).toBeEnabled();
+      expect(
+        screen.getByRole('button', { name: 'Choose targets' }),
+      ).not.toHaveAccessibleDescription();
+      await user.click(screen.getByRole('button', { name: 'Choose targets' }));
+      expect(screen.getByRole('dialog', { name: 'Choose targets' })).toBeInTheDocument();
     });
 
     it('lists the user presets by name, without the base, and sorts them from the header', async () => {

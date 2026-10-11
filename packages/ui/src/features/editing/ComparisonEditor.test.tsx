@@ -584,7 +584,9 @@ describe('editing', () => {
       await user.click(within(dialog).getByRole('button', { name: 'Clear' }));
 
       expect(screen.getByRole('button', { name: 'Choose base' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Choose targets' })).toBeDisabled();
+      expect(screen.getByRole('button', { name: 'Choose targets' })).toHaveAccessibleDescription(
+        'Choose a base preset first',
+      );
       expect(screen.queryByRole('table')).not.toBeInTheDocument();
     });
 
