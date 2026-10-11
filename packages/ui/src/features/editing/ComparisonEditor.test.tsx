@@ -226,10 +226,10 @@ describe('editing', () => {
     // ASA's 230 is what PETG inherits from Generic PETG, so PETG's override would be redundant.
     const dialog = await previewCopy(user, 'Nozzle temperature');
     expect(dialog).toHaveAccessibleName('Copy 1 setting to PETG');
-    const pin = within(dialog).getByRole('checkbox', {
+    const pin = within(dialog).getByRole('button', {
       name: 'Pin override for Nozzle temperature',
     });
-    expect(pin).not.toBeChecked();
+    expect(pin).toHaveAttribute('aria-pressed', 'false');
 
     await user.click(
       within(dialog).getByRole('button', { name: 'About Pin override for Nozzle temperature' }),
@@ -238,6 +238,7 @@ describe('editing', () => {
       'later changes to "Generic PETG" no longer reach it',
     );
     await user.click(pin);
+    expect(pin).toHaveAttribute('aria-pressed', 'true');
     expect(screen.getByRole('dialog')).toBeInTheDocument();
     await user.click(within(dialog).getByRole('button', { name: 'Copy' }));
 

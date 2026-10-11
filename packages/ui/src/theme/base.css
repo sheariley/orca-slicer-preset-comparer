@@ -589,6 +589,21 @@ button.icon-button:hover {
   font-weight: normal;
 }
 
+/* "Pin override": a thumbtack, accent-colored while pinned. It overlaps the cell's padding so
+   the row stays as tall as its text. */
+button.icon-button.pin-toggle {
+  margin: -7px 0;
+}
+
+button.icon-button.pin-toggle[aria-pressed='true'] {
+  color: var(--c-accent);
+}
+
+/* Hover only colors the thumbtack: no border around it. */
+button.icon-button.pin-toggle:hover {
+  border-color: transparent;
+}
+
 .preview-table tr[data-skipped='true'] td {
   color: var(--c-muted);
 }

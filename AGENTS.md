@@ -74,7 +74,7 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
   - Undo and redo also work from the keyboard (Ctrl+Z, Ctrl+Y or Ctrl+Shift+Z; ⌘ on macOS), except while typing in a field.
   - Confirm before discarding unsaved changes: choosing another base preset or profile type, taking targets with unsaved changes out of the comparison, or closing the window (through the host's `CloseGuard`, where it has one: the desktop app does).
 - **Don't offer what can't be saved.** No copy controls on a read-only host. Copies into a system preset are allowed because saving puts them into a new user preset; its column's "System" badge (an `InfoTip`) says so.
-- **Ask about redundant overrides with a "Pin override" checkbox** on each affected setting, in the preview of a copy (see "Writing profiles back"). Its tooltip (an `InfoTip`) explains the trade-off: keeping the override pins the value, so changes to the parent no longer reach it; unchecking re-links it to the parent.
+- **Ask about redundant overrides with a "Pin override" toggle** (`PinToggle`: a thumbtack button, upright and filled when pinned, tilted and outlined when not, with `aria-pressed` and a tooltip naming the current state) on each affected setting, in the preview of a copy (see "Writing profiles back"). Its tooltip (an `InfoTip`) explains the trade-off: keeping the override pins the value, so changes to the parent no longer reach it; unpinning re-links it to the parent.
 - **Bulk copy is the comparison itself:** select settings in the table and "Copy selected to N targets" copies them from the base to every target in one action, after a preview (`CopyToTargetsDialog`; with one target, `CopyPreviewDialog`).
   - Before applying, preview each target: the current value, the new value, and which targets already match and will be skipped.
   - Apply the batch as one undoable step, while letting users leave out individual targets.
@@ -184,7 +184,7 @@ orca-slicer-profile-comparer/
 │   │       ├── ComparerRoot.tsx    # the whole UI; composition roots render this
 │   │       ├── ComparerScreen.tsx
 │   │       ├── features/       # preset-picker/ (the base and target picker dialog), diff-view/, editing/, save-flow/; (planned) settings/
-│   │       ├── components/     # shared building blocks: InfoTip, IconButton, Dialog, ErrorMessage
+│   │       ├── components/     # shared building blocks: InfoTip, IconButton, Tooltip, PinToggle, Dialog, ErrorMessage
 │   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context
 │   │       └── theme/          # base.css (components), desktop.css and orca.css (token values)
@@ -399,9 +399,9 @@ Paths are relative to the OrcaSlicer repo root.
 
 - **Write to the profile's own file, not the resolved view.** Copying a value into a profile that inherits means adding or updating that key as an override in its own JSON. Don't flatten the whole inheritance chain into the file.
 - **Let the user decide about redundant overrides ("Pin override").** When the target overrides a setting and the copied value equals what it would inherit, the override is redundant today, but it still pins the value: later changes to the parent won't reach it. Both choices are valid, so the user decides per setting:
-  - Keeping the override ("Pin override" checked) writes the value as an override.
-  - Dropping it (unchecked) removes the override, re-linking the setting to the parent.
-  - The defaults change no more than the copy requires. An override that already holds the value stays (checked), so the file is untouched. One with a different value is dropped (unchecked), since the copy changes that setting anyway.
+  - Keeping the override ("Pin override" pinned) writes the value as an override.
+  - Dropping it (not pinned) removes the override, re-linking the setting to the parent.
+  - The defaults change no more than the copy requires. An override that already holds the value stays (pinned), so the file is untouched. One with a different value is dropped (not pinned), since the copy changes that setting anyway.
   - Where the target has no override of its own, there's no choice to make.
   - `planTransfer` lists these settings in each target plan's `redundantOverrides`, with the current choice. It takes the user's choices through `options.pinOverrides`: a map from target preset id to setting key to keep-or-not (`PinOverrides`). Settings without an entry get the default, so the UI only stores what the user changed, and re-plans when a checkbox changes.
 - **System profiles are effectively read-only.** Files under `resources/profiles/` (and OrcaSlicer's installed or cached copies) get replaced on app updates. Saving targets user presets: a system preset's changes are saved as a new user preset that `inherits` from it (see "System presets save as new user presets" above).

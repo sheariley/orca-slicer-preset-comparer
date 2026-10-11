@@ -2,6 +2,7 @@ import { presetIn, type EditSession } from '@comparer/app';
 import type { TargetPlan } from '@comparer/core';
 import { useMemo } from 'react';
 import { InfoTip } from '../../components/InfoTip.tsx';
+import { PinToggle } from '../../components/PinToggle.tsx';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
 import { formatValue, settingNames } from '../diff-view/format.ts';
 import { skipReasonText } from './skip-reasons.ts';
@@ -24,7 +25,7 @@ interface CopyPlanTableProps {
 
 /**
  * What a copy does to one target: each setting's value now and after, why any are left alone,
- * and a "Pin override" checkbox for each redundant override.
+ * and a "Pin override" toggle (a thumbtack) for each redundant override.
  */
 export function CopyPlanTable({
   before,
@@ -79,15 +80,13 @@ export function CopyPlanTable({
               <td>
                 {keep !== undefined ? (
                   <span className="toggle">
-                    <label className="toggle">
-                      <input
-                        type="checkbox"
-                        aria-label={pinName}
-                        checked={keep}
-                        onChange={(event) => onPin(key, event.target.checked)}
-                      />
-                      Pin override
-                    </label>
+                    <PinToggle
+                      label={pinName}
+                      pinned={keep}
+                      onChange={(pinned) => onPin(key, pinned)}
+                      pinnedText="Override pinned: keeps its own value"
+                      unpinnedText={`Not pinned: follows ${parentText}`}
+                    />
                     <InfoTip
                       subject={pinName}
                       content={
@@ -97,10 +96,12 @@ export function CopyPlanTable({
                             {parentText}.
                           </p>
                           <p>
-                            Checked: {targetName} keeps its own value, so later changes to{' '}
+                            Pinned: {targetName} keeps its own value, so later changes to{' '}
                             {parentText} no longer reach it.
                           </p>
-                          <p>Unchecked: the setting is re-linked to {parentText} and follows it.</p>
+                          <p>
+                            Not pinned: the setting is re-linked to {parentText} and follows it.
+                          </p>
                         </>
                       }
                     />
