@@ -19,3 +19,16 @@ function scalarToString(value: unknown): string {
 export function valuesEqual(a: NormalizedValue, b: NormalizedValue): boolean {
   return a.length === b.length && a.every((item, index) => item === b[index]);
 }
+
+/**
+ * Resizes an array value the way OrcaSlicer resizes per-variant settings
+ * (`ConfigOptionVector::resize`): truncates, or pads by repeating the **first** value. (Its code
+ * comment says "last", but the code uses `front()`.) An empty value stays empty.
+ */
+export function resizeValue(value: NormalizedValue, length: number): NormalizedValue {
+  const first = value[0];
+  if (first === undefined || value.length === length) return value;
+  return value.length > length
+    ? value.slice(0, length)
+    : [...value, ...Array<string>(length - value.length).fill(first)];
+}

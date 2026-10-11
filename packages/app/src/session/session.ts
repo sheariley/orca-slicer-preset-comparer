@@ -10,8 +10,10 @@ import {
   redo,
   resolveChain,
   undo,
+  VARIANT_KEYS,
   type EditBatch,
   type EditHistory,
+  type IncludedTemplates,
   type PendingEdits,
   type PresetRef,
   type ProfileDocument,
@@ -19,13 +21,24 @@ import {
   type ResolveOptions,
 } from '@comparer/core';
 
-/** A preset opened for editing, with the raw documents of its inheritance chain. */
+/**
+ * A preset opened for editing, with the raw documents of its inheritance chain and the templates
+ * they include.
+ */
 export interface LoadedPreset {
   readonly ref: PresetRef;
   /** The preset's own file as it was when the session opened it. The history applies to this. */
   readonly opened: ProfileDocument;
   /** Leaf first. The leaf is the preset's own file as it is now (after any saves). */
   readonly chain: readonly ProfileDocument[];
+  /** System templates, never edited (see loadTemplates). */
+  readonly templates: IncludedTemplates;
+}
+
+/** What opening or reloading a preset reads: its chain (leaf first) and included templates. */
+export interface PresetFiles {
+  readonly chain: readonly ProfileDocument[];
+  readonly templates?: IncludedTemplates;
 }
 
 /**
@@ -38,11 +51,14 @@ export interface EditSession {
 }
 
 export function createSession(
-  presets: readonly { ref: PresetRef; chain: readonly ProfileDocument[] }[],
+  presets: readonly (PresetFiles & { readonly ref: PresetRef })[],
 ): EditSession {
   return {
     presets: new Map(
-      presets.map((preset) => [preset.ref.id, { ...preset, opened: preset.chain[0]! }]),
+      presets.map(({ ref, chain, templates = new Map() }) => [
+        ref.id,
+        { ref, chain, templates, opened: chain[0]! },
+      ]),
     ),
     history: emptyHistory,
   };
@@ -101,12 +117,16 @@ export function resolveEdited(
   id: string,
   options: ResolveOptions,
 ): ResolvedProfile {
-  return resolveChain(editedChain(session, id), options);
+  return resolveChain(editedChain(session, id), {
+    ...options,
+    templates: presetIn(session, id).templates,
+  });
 }
 
 /**
  * What a preset would have without its own overrides, in its current, edited state: its parent's
- * resolved settings, or just the built-in defaults for a root preset.
+ * resolved settings (or just the built-in defaults for a root preset), with the templates it
+ * includes on top.
  */
 export function inheritedEdited(
   session: EditSession,
@@ -114,9 +134,17 @@ export function inheritedEdited(
   options: ResolveOptions,
 ): ResolvedProfile['settings'] {
   const [leaf, ...parents] = editedChain(session, id);
-  // A root inherits only the defaults: resolve an empty stand-in for its own file.
-  const chain = parents.length > 0 ? parents : [{ ref: leaf!.ref, content: {} }];
-  return resolveChain(chain, options).settings;
+  // Resolve a stand-in for its own file that keeps only what isn't an override: the templates
+  // it includes, and its variant list, which sets the length of per-variant values.
+  const variantKeys = VARIANT_KEYS[leaf!.ref.type];
+  const kept = ['include', variantKeys?.names, variantKeys?.extruderIds];
+  const content = Object.fromEntries(
+    Object.entries(leaf!.content).filter(([key]) => kept.includes(key)),
+  );
+  return resolveChain([{ ref: leaf!.ref, content }, ...parents], {
+    ...options,
+    templates: presetIn(session, id).templates,
+  }).settings;
 }
 
 export function recordBatch(session: EditSession, batch: EditBatch): EditSession {
@@ -142,12 +170,12 @@ export const undoLabel = (session: EditSession) => session.history.done.at(-1)?.
 export const redoLabel = (session: EditSession) => session.history.undone[0]?.label;
 
 /**
- * Replaces an open preset's files with fresh copies (`chain`, leaf first), keeping the history:
+ * Replaces an open preset's files with fresh copies, keeping the history:
  * e.g. after a save conflict, when OrcaSlicer changed the file. The changes found on disk are
  * folded into the opened file too, so the history replays on top of them. Where both changed a
  * key, the user's copy wins, and undo still reverses copies that were saved before.
  */
-export function reloadPreset(session: EditSession, chain: readonly ProfileDocument[]): EditSession {
+export function reloadPreset(session: EditSession, { chain, templates }: PresetFiles): EditSession {
   const leaf = chain[0]!;
   const preset = presetIn(session, leaf.ref.id);
   const external = editsBetween(preset.chain[0]!.content, leaf.content);
@@ -156,7 +184,7 @@ export function reloadPreset(session: EditSession, chain: readonly ProfileDocume
     [...session.presets].map(([id, other]) => [
       id,
       id === leaf.ref.id
-        ? { ...other, opened, chain }
+        ? { ...other, opened, chain, templates: templates ?? other.templates }
         : {
             ...other,
             // Another open preset may inherit from this one.

@@ -344,12 +344,18 @@ Paths are relative to the OrcaSlicer repo root.
   - Filament overrides of printer settings (`filament_retraction_length`, ...) are defined in a loop that copies the printer setting's label and default; the extractor follows it.
 - **Legacy keys (partly implemented):** OrcaSlicer's `PrintConfigDef::handle_legacy` runs on every key it loads. It discards obsolete keys (the `ignore` set, e.g. `adaptive_layer_height`) and renames old ones (`enable_wipe_tower` → `enable_prime_tower`). `resolveChain` applies both from `SettingCatalog.legacyKeys()`; when a file has an old key and its replacement, the replacement wins. Rules that rewrite values aren't applied.
 - **Unknown keys:** OrcaSlicer ignores keys it doesn't define, and Bambu's bundled profiles carry dozens of them (Bambu Studio leftovers such as `counter_coef_1`). The diff view hides keys the catalog doesn't know behind a "Hide settings OrcaSlicer doesn't use" toggle (on by default). The catalog must therefore cover every real setting; see `tools/extract-settings` for the definition forms it understands.
-- **`include` templates (not implemented yet):** about 1,500 bundled profiles also list `include`, an array of template preset names (or one bare name). OrcaSlicer resolves a preset as follows (`PresetBundle.cpp`, the install step after `parse_subfile`):
+- **`include` templates (implemented):** about 1,500 of Bambu's bundled filament profiles also list `include`, an array of template preset names (or one bare name). `resolveChain` follows OrcaSlicer's `PresetBundle::resolve_vendor_preset`. For each preset in the chain, root first:
   1. Start from the parent's resolved settings. A preset with no `inherits` starts from OrcaSlicer's built-in defaults instead (`set_default_value` in `PrintConfig.cpp`).
-  2. Layer each included template on top, in the order listed. What gets layered is the template's resolved settings minus the defaults, not just the keys in its own file.
-  3. Apply the preset's own keys last.
+  2. Layer each included template on top, in the order listed. What gets layered is the template's resolved settings (its own parents and includes applied) that differ from the defaults, not just the keys in its own file. A template that sets a default value therefore doesn't override the parent.
+  3. Apply the preset's own keys.
+  4. Resize the per-variant settings to the preset's number of variants (`extend_default_config_length`; see "Fit per-variant settings" below). Each level is resized in turn; a template's settings are taken before it's resized.
 
-  OrcaSlicer then pads per-variant arrays to the parent's length. Extend `resolveChain` to support this before comparing profiles that use `include`. The current fixtures don't.
+  More rules:
+  - OrcaSlicer reads `include` only in bundled vendor profiles; user presets' `include` is ignored (`includesOf`).
+  - A template that can't be found is skipped, as OrcaSlicer does (it logs an error and loads the preset without it).
+  - `loadTemplates` (app) looks templates up through `resolveParent` and passes them to `resolveChain` as `options.templates`. Editing sessions keep them per preset.
+  - Not applied: replacing `nil` values with the parent's when resizing. In bundled profiles `nil` only appears on the filament overrides of printer settings, which OrcaSlicer keeps as `nil`.
+  - The fixtures include `Bambu ABS @BBL H2C` and the template it includes.
 
 - `instantiation: "true"` marks a preset users can pick. `"false"` (or a missing key on `@base` / `fdm_*` templates) marks an abstract parent.
 - **Values are strings.** Numbers and booleans are stored as strings (`"0.4"`, `"1"`). Per-extruder or per-filament settings are arrays of strings (e.g. `"hot_plate_temp": ["100"]`). Some values are percentages (`"50%"`) or multi-line G-code. Normalize before comparing so that, say, `"16"` and `["16"]` don't show up as a false difference.
@@ -387,7 +393,7 @@ Paths are relative to the OrcaSlicer repo root.
 
   When copying:
   - If both presets list their variants and the source has every one the target has, match values by identity, so a "High Flow" value never lands in a "Standard" slot and one extruder's values never land on the other.
-  - Otherwise resize the way OrcaSlicer does when it loads a preset (`extend_default_config_length` → `ConfigOptionVector::resize`): truncate, or pad by repeating the **first** value. (OrcaSlicer's code comment says "last", but the code uses `front()`.)
+  - Otherwise resize the way OrcaSlicer does when it loads a preset (`extend_default_config_length` → `ConfigOptionVector::resize`): truncate, or pad by repeating the **first** value (`resizeValue`). (OrcaSlicer's code comment says "last", but the code uses `front()`.) `resolveChain` resizes resolved values the same way.
   - Other arrays (G-code lists, `compatible_printers`, ...) are copied as they are.
   - Never copy the settings that define the variants (`VARIANT_KEYS`): the variant names, and for processes the extruder ids. They define the shape of every per-variant array.
 

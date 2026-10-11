@@ -46,8 +46,9 @@ export interface ProfileRepository {
   listPresets(query?: PresetQuery): Promise<readonly PresetRef[]>;
   readDocument(ref: PresetRef): Promise<ProfileDocument>;
   /**
-   * Finds the preset that `child` inherits from by name. The host decides the lookup scope
-   * (same vendor folder, shared libraries, ...). Resolves to undefined when there's no match.
+   * Finds a preset that `child` refers to by name: the parent it inherits from, or a template it
+   * includes. The host decides the lookup scope (same vendor folder, shared libraries, ...).
+   * Resolves to undefined when there's no match.
    */
   resolveParent(child: PresetRef, parentName: string): Promise<PresetRef | undefined>;
   saveDocument(request: SaveRequest): Promise<SaveResult>;

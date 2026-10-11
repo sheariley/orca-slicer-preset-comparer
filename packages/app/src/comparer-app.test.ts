@@ -90,4 +90,48 @@ describe('ComparerApp', () => {
 
     await expect(orphanApp.loadResolved(orphan!)).rejects.toMatchObject({ kind: 'not-found' });
   });
+
+  it('applies the templates a preset includes, found by name like parents', async () => {
+    const templateApp = createComparerApp({
+      repository: createMemoryHost({
+        documents: [
+          ...documents,
+          doc('dual base', 'filament', { filament_extruder_variant: ['Standard', 'High Flow'] }),
+          doc('dual', 'filament', {
+            inherits: 'dual base',
+            include: 'fans',
+            instantiation: 'false',
+          }),
+          doc('fans', 'filament', { fan_max_speed: ['80'] }),
+          doc('PLA dual', 'filament', { inherits: 'PLA', include: ['dual', 'missing'] }),
+        ],
+      }),
+      catalog: {
+        ...noCatalog,
+        keyRules: () => ({ owned: new Set<string>(), perVariant: new Set(['nozzle_temperature']) }),
+      },
+    });
+    const presets = await templateApp.listPresets();
+    const resolved = await templateApp.loadResolved(presets.find((p) => p.name === 'PLA dual')!);
+
+    // From the template's parent, and from a template the template includes.
+    expect(resolved.settings.get('filament_extruder_variant')?.value).toEqual([
+      'Standard',
+      'High Flow',
+    ]);
+    expect(resolved.settings.get('fan_max_speed')).toMatchObject({
+      value: ['80'],
+      definedBy: { name: 'fans' },
+    });
+    // Inherited from PLA, resized to the two variants.
+    expect(resolved.settings.get('nozzle_temperature')?.value).toEqual(['210', '210']);
+
+    // An editing session resolves them the same way.
+    const session = await templateApp.openSession([
+      presets.find((p) => p.name === 'PLA dual')!,
+      presets.find((p) => p.name === 'PETG')!,
+    ]);
+    const edited = templateApp.compareEdited(session, 'Acme/PLA dual', 'Acme/PETG');
+    expect(edited.left.settings).toEqual(resolved.settings);
+  });
 });

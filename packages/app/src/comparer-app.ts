@@ -34,7 +34,7 @@ import {
   resolveEdited,
   type EditSession,
 } from './session/session.ts';
-import { loadChain, loadResolved } from './use-cases/load-resolved.ts';
+import { loadPresetDocuments, loadResolved } from './use-cases/load-resolved.ts';
 
 export interface ComparerDependencies {
   readonly repository: ProfileRepository;
@@ -93,7 +93,7 @@ export interface ComparerApp {
   compare(left: PresetRef, right: PresetRef): Promise<Comparison>;
   describeSetting(key: string): SettingInfo | undefined;
 
-  /** Loads presets (and their parent chains) for editing. */
+  /** Loads presets (with their parent chains and included templates) for editing. */
   openSession(refs: readonly PresetRef[]): Promise<EditSession>;
   /** Compares two open presets as they currently stand, pending edits included. */
   compareEdited(session: EditSession, left: string, right: string): Comparison;
@@ -127,6 +127,7 @@ export function createComparerApp({
   const resolveOptions = (type: ProfileType): ResolveOptions => ({
     defaults: catalog.defaultsFor(type),
     legacyKeys: catalog.legacyKeys(),
+    perVariant: catalog.keyRules(type).perVariant,
   });
   const resolve = (ref: PresetRef) => loadResolved(repository, ref, resolveOptions(ref.type));
 
@@ -175,8 +176,8 @@ export function createComparerApp({
     describeSetting: (key) => catalog.describe(key),
 
     async openSession(refs) {
-      const chains = await Promise.all(refs.map((ref) => loadChain(repository, ref)));
-      return createSession(chains.map((chain, index) => ({ ref: refs[index]!, chain })));
+      const loaded = await Promise.all(refs.map((ref) => loadPresetDocuments(repository, ref)));
+      return createSession(loaded.map((files, index) => ({ ref: refs[index]!, ...files })));
     },
 
     compareEdited(session, leftId, rightId) {
@@ -207,10 +208,10 @@ export function createComparerApp({
     },
 
     async reloadPresets(session, ids) {
-      const chains = await Promise.all(
-        ids.map((id) => loadChain(repository, presetIn(session, id).ref)),
+      const loaded = await Promise.all(
+        ids.map((id) => loadPresetDocuments(repository, presetIn(session, id).ref)),
       );
-      return chains.reduce(reloadPreset, session);
+      return loaded.reduce(reloadPreset, session);
     },
 
     previewSave(session) {

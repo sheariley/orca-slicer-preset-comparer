@@ -65,3 +65,30 @@ export function inheritsFrom(document: ProfileDocument): string | undefined {
   const parent = document.content['inherits'];
   return typeof parent === 'string' && parent.length > 0 ? parent : undefined;
 }
+
+/**
+ * The templates a document includes (`include`: an array of preset names, or one bare name), in
+ * the order listed. OrcaSlicer reads `include` only in bundled vendor profiles; it ignores the
+ * key in user presets, so this returns none for them.
+ */
+export function includesOf(document: ProfileDocument): string[] {
+  if (document.ref.origin !== 'system') return [];
+  const include = document.content['include'];
+  const names = Array.isArray(include) ? (include as unknown[]) : [include];
+  return names.filter((name): name is string => typeof name === 'string' && name.length > 0);
+}
+
+/**
+ * The settings that define a preset's extruder variants, per type: the variant names (e.g.
+ * "Direct Drive Standard") and, for processes, the extruder each variant belongs to.
+ * OrcaSlicer pairs the two (`Preset::get_extruder_names_and_keysets`): on a dual-extruder printer
+ * the names repeat once per extruder. Filaments have no extruder ids (`filament_extruder_id` is
+ * commented out in OrcaSlicer). These define the shape of every per-variant array, so copies
+ * never change them.
+ */
+export const VARIANT_KEYS: Readonly<
+  Partial<Record<ProfileType, { readonly names: string; readonly extruderIds?: string }>>
+> = {
+  filament: { names: 'filament_extruder_variant' },
+  process: { names: 'print_extruder_variant', extruderIds: 'print_extruder_id' },
+};

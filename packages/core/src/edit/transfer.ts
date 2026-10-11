@@ -1,28 +1,14 @@
 import {
   METADATA_KEYS,
+  VARIANT_KEYS,
   type PresetRef,
   type ProfileDocument,
   type ProfileType,
   type RawValue,
 } from '../model/profile.ts';
-import { valuesEqual, type NormalizedValue } from '../normalize/normalize-value.ts';
+import { resizeValue, valuesEqual, type NormalizedValue } from '../normalize/normalize-value.ts';
 import type { KeyRules } from '../ports/ports.ts';
 import type { LegacyKeys, ResolvedProfile } from '../resolve/resolve-chain.ts';
-
-/**
- * The settings that define a preset's extruder variants, per type: the variant names (e.g.
- * "Direct Drive Standard") and, for processes, the extruder each variant belongs to.
- * OrcaSlicer pairs the two (`Preset::get_extruder_names_and_keysets`): on a dual-extruder printer
- * the names repeat once per extruder. Filaments have no extruder ids (`filament_extruder_id` is
- * commented out in OrcaSlicer). These define the shape of every per-variant array, so copies
- * never change them.
- */
-export const VARIANT_KEYS: Readonly<
-  Partial<Record<ProfileType, { readonly names: string; readonly extruderIds?: string }>>
-> = {
-  filament: { names: 'filament_extruder_variant' },
-  process: { names: 'print_extruder_variant', extruderIds: 'print_extruder_id' },
-};
 
 /** Everything planTransfer needs to know about one target. */
 export interface TransferTarget {
@@ -31,8 +17,8 @@ export interface TransferTarget {
   /** The target with its inheritance chain applied. */
   readonly resolved: ResolvedProfile;
   /**
-   * What the target would have without its own overrides: its parent's resolved settings, or
-   * the built-in defaults for a root preset.
+   * What the target would have without its own overrides: its parent's resolved settings (or
+   * the built-in defaults for a root preset), with the templates it includes on top.
    */
   readonly inherited: ResolvedProfile['settings'];
   readonly rules: KeyRules;
@@ -251,10 +237,5 @@ export function fitToVariants(
     const indexes = targetVariants.map((variant) => sourceVariants.indexOf(variant));
     if (indexes.every((index) => index >= 0)) return indexes.map((index) => value[index]!);
   }
-  const length = targetVariants?.length ?? 1;
-  const first = value[0];
-  if (first === undefined) return value;
-  return value.length >= length
-    ? value.slice(0, length)
-    : [...value, ...Array<string>(length - value.length).fill(first)];
+  return resizeValue(value, targetVariants?.length ?? 1);
 }

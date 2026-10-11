@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeValue, valuesEqual } from './normalize-value.ts';
+import { normalizeValue, resizeValue, valuesEqual } from './normalize-value.ts';
 
 describe('normalizeValue', () => {
   it('wraps a scalar string', () => {
@@ -23,5 +23,13 @@ describe('valuesEqual', () => {
 
   it('distinguishes different lengths', () => {
     expect(valuesEqual(normalizeValue('16'), normalizeValue(['16', '16']))).toBe(false);
+  });
+});
+
+describe('resizeValue', () => {
+  it('truncates, or pads by repeating the first value, like OrcaSlicer', () => {
+    expect(resizeValue(['1', '2', '3'], 2)).toEqual(['1', '2']);
+    expect(resizeValue(['1', '2'], 4)).toEqual(['1', '2', '1', '1']);
+    expect(resizeValue([], 3)).toEqual([]);
   });
 });

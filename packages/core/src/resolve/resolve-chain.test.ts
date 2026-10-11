@@ -99,3 +99,143 @@ describe('resolveChain', () => {
     expect(() => resolveChain([document, document])).toThrow(ComparerError);
   });
 });
+
+describe('resolveChain with include templates', () => {
+  const h2cTemplates = new Map([
+    [
+      'fdm_filament_template_direct_dual_e3d',
+      chainFor(documents, 'fdm_filament_template_direct_dual_e3d'),
+    ],
+  ]);
+  const variants = [
+    'Direct Drive Standard',
+    'Direct Drive High Flow',
+    'Direct Drive E3D High Flow',
+  ];
+
+  it('layers a real template between the parent and the preset', () => {
+    const resolved = resolveChain(chainFor(documents, 'Bambu ABS @BBL H2C'), {
+      templates: h2cTemplates,
+    });
+
+    // The template overrides the parent chain (fdm_filament_common sets ["0"])...
+    expect(resolved.settings.get('long_retractions_when_ec')).toMatchObject({
+      value: ['1', '1', '1'],
+      definedBy: { name: 'fdm_filament_template_direct_dual_e3d' },
+    });
+    expect(resolved.settings.get('filament_extruder_variant')?.value).toEqual(variants);
+    // ...and the preset's own keys override the template.
+    expect(resolved.settings.get('filament_flow_ratio')).toMatchObject({
+      value: ['0.98', '0.98', '0.98'],
+      definedBy: { name: 'Bambu ABS @BBL H2C' },
+    });
+    // Templates aren't part of the inheritance chain.
+    expect(resolved.chain.map((ref) => ref.name)).not.toContain(
+      'fdm_filament_template_direct_dual_e3d',
+    );
+  });
+
+  it('resizes inherited per-variant values to the variants the template brings', () => {
+    const resolved = resolveChain(chainFor(documents, 'Bambu ABS @BBL H2C'), {
+      templates: h2cTemplates,
+      perVariant: new Set(['fan_min_speed', 'additional_cooling_fan_speed']),
+    });
+
+    expect(resolved.settings.get('fan_min_speed')).toMatchObject({
+      value: ['10', '10', '10'],
+      definedBy: { name: 'fdm_filament_abs' },
+    });
+    expect(resolved.settings.get('additional_cooling_fan_speed')?.value).toEqual(['0', '0', '0']);
+    // Only per-variant settings are resized.
+    expect(resolved.settings.get('filament_cost')?.value).toEqual(['15.99']);
+  });
+
+  const doc = (
+    name: string,
+    content: Record<string, unknown>,
+    origin: 'system' | 'user' = 'system',
+  ): ProfileDocument => ({
+    ref: { id: name, name, type: 'filament', origin },
+    content: { name, ...content },
+  });
+
+  it("layers what the template's chain resolves to, minus the built-in defaults", () => {
+    const parent = doc('Parent', { speed: ['5'], temp: ['200'] });
+    const base = doc('Template base', { temp: ['230'] });
+    const template = doc('Template', { inherits: 'Template base', speed: ['1'], fan: ['80'] });
+    const leaf = doc('Leaf', { inherits: 'Parent', include: 'Template' });
+
+    const resolved = resolveChain([leaf, parent], {
+      defaults: new Map([
+        ['speed', ['1']],
+        ['temp', ['200']],
+        ['fan', ['0']],
+      ]),
+      templates: new Map([['Template', [template, base]]]),
+    });
+
+    // Setting the default value doesn't override the parent's value.
+    expect(resolved.settings.get('speed')).toMatchObject({ value: ['5'], definedBy: parent.ref });
+    // The template's own parent counts too.
+    expect(resolved.settings.get('temp')).toMatchObject({ value: ['230'], definedBy: base.ref });
+    expect(resolved.settings.get('fan')).toMatchObject({ value: ['80'], definedBy: template.ref });
+  });
+
+  it('layers several templates in the order listed', () => {
+    const first = doc('First', { fan: ['10'], speed: ['10'] });
+    const second = doc('Second', { fan: ['20'] });
+    const leaf = doc('Leaf', { include: ['First', 'Second'] });
+
+    const resolved = resolveChain([leaf], {
+      templates: new Map([
+        ['First', [first]],
+        ['Second', [second]],
+      ]),
+    });
+
+    expect(resolved.settings.get('fan')?.value).toEqual(['20']);
+    expect(resolved.settings.get('speed')?.value).toEqual(['10']);
+  });
+
+  it('ignores include in user presets and skips missing templates, like OrcaSlicer', () => {
+    const template = doc('Template', { fan: ['80'] });
+    const templates = new Map([['Template', [template]]]);
+
+    expect(
+      resolveChain([doc('Mine', { include: 'Template' }, 'user')], { templates }).settings.has(
+        'fan',
+      ),
+    ).toBe(false);
+    expect(
+      resolveChain([doc('Leaf', { include: ['Missing', 'Template'] })], { templates }).settings.get(
+        'fan',
+      )?.value,
+    ).toEqual(['80']);
+  });
+
+  it('resizes at each level of the chain, as OrcaSlicer resolves each parent first', () => {
+    const variantList = (count: number) => ({
+      filament_extruder_variant: ['A', 'B', 'C'].slice(0, count),
+    });
+    const root = doc('Root', { ...variantList(3), temp: ['1', '2', '3'] });
+    const middle = doc('Middle', { inherits: 'Root', ...variantList(1) });
+    const leaf = doc('Leaf', { inherits: 'Middle', ...variantList(3) });
+
+    const resolved = resolveChain([leaf, middle, root], { perVariant: new Set(['temp']) });
+
+    expect(resolved.settings.get('temp')?.value).toEqual(['1', '1', '1']);
+  });
+
+  it('rejects templates that include each other', () => {
+    const a = doc('A', { include: 'B' });
+    const b = doc('B', { include: 'A' });
+    const templates = new Map([
+      ['A', [a]],
+      ['B', [b]],
+    ]);
+
+    expect(() => resolveChain([doc('Leaf', { include: 'A' })], { templates })).toThrow(
+      ComparerError,
+    );
+  });
+});
