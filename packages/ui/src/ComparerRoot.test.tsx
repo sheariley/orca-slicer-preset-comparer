@@ -150,7 +150,7 @@ describe('ComparerRoot', () => {
   });
 
   describe('hiding the presets', () => {
-    it('folds the type tabs and pickers into a summary line, and back', async () => {
+    it('folds the pickers into a summary line, and back', async () => {
       const user = userEvent.setup();
       const settings = memorySettings();
       renderComparer(false, settings);
@@ -164,8 +164,9 @@ describe('ComparerRoot', () => {
       await user.click(hide);
 
       expect(screen.getByLabelText('Base')).not.toBeVisible();
-      expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
-      expect(screen.getByText(/Filament:/)).toHaveTextContent('Filament: PLA vs PETG');
+      // The type tabs share the title's row, so they stay.
+      expect(screen.getByRole('tab', { name: 'Filament' })).toBeVisible();
+      expect(document.querySelector('.selection-summary')).toHaveTextContent('PLA vs PETG');
       expect(screen.getByRole('table')).toBeInTheDocument();
       expect(settings.saved).toEqual({ 'layout.hidePresets': true });
 

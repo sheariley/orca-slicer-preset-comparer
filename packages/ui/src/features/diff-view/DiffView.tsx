@@ -1,6 +1,7 @@
 import type { BaseComparison } from '@comparer/app';
 import type { NormalizedValue, ResolvedProfile } from '@comparer/core';
 import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import { CloseIcon, IconButton } from '../../components/IconButton.tsx';
 import { InfoTip } from '../../components/InfoTip.tsx';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
 import { settingNames, unitFor } from './format.ts';
@@ -343,22 +344,11 @@ function ColumnHeader({
           )}
         </span>
         {onRemove && (
-          <button
-            type="button"
-            className="icon-button"
-            aria-label={`Remove ${ref.name} from the comparison`}
+          <IconButton
+            label={`Remove ${ref.name} from the comparison`}
+            icon={<CloseIcon />}
             onClick={onRemove}
-          >
-            <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true" focusable="false">
-              <path
-                d="M4 4l8 8M12 4l-8 8"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          />
         )}
       </div>
     </th>

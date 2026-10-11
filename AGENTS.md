@@ -35,10 +35,11 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
   - Put the tooltip text in one place and use it for both the hover and the icon, so the two never drift apart.
   - Native `title` attributes alone don't satisfy this rule; they're hover-only and unreachable by touch or keyboard.
   - **Use `InfoTip`** (`packages/ui/src/components/InfoTip.tsx`) for every tooltip; it implements all of the above. Don't add `title` attributes.
+  - **The exception: icon-only buttons use `IconButton`** (`components/IconButton.tsx`). Its label is the button's accessible name and shows as a tooltip on mouse hover and keyboard focus. It needs no info icon, since a tap does what the button does and the tooltip only repeats its name.
   - In dense tables, give each row one info tip that covers the whole row (e.g. the setting's description plus where each side's value came from) rather than an icon per cell.
 - **Use `Dialog`** (`packages/ui/src/components/Dialog.tsx`, on Floating UI) for every modal: it traps focus, restores it on close, and closes on Escape or a backdrop click (unless it's mid-task, like saving).
 - **Give every control a unique accessible name.** OrcaSlicer reuses short labels (three settings are called "Fan speed"), so names built from a label add the key when another setting shares it (`settingNames` in `diff-view/format.ts`).
-- **Size touch targets for fingers.** Buttons, checkboxes, info icons, and picker rows need a hit area of at least 32 × 32 CSS px (44 × 44 preferred), even when the visible glyph is smaller.
+- **Size touch targets for fingers.** Buttons, checkboxes, info icons, and picker rows need a hit area of at least 32 × 32 CSS px (44 × 44 preferred), even when the visible glyph is smaller. One exception, asked for by the user: the "Hide presets" chevron on the accent rule is 48 × 18 px, so it doesn't crowd the controls above and below it.
 - **Label every control.** Use a visible `<label>` or an `aria-label`, and semantic roles (`tablist`/`tab`, `table`, `alert`). Component tests query by role and label (React Testing Library), which keeps this honest.
 - **No ellipses in button text** ("Save", not "Save…"). They add nothing.
 - **Support the keyboard.** Every action reachable by mouse or touch must also be reachable by keyboard, with a visible focus indicator.
@@ -54,7 +55,7 @@ These apply to every host (desktop, plugin, playground). When a rule here confli
 - **Show where every value came from.** Its tooltip (hover, plus the info icon) names the preset that set it. Built-in OrcaSlicer defaults are visually distinct (muted, italic) and say so.
 - **Never silently drop data from the view.** Keys OrcaSlicer ignores (not in the setting catalog) are hidden by default behind a "Hide settings OrcaSlicer doesn't use (N)" toggle that shows the count, never removed outright.
 - **Highlight changed rows** with the `--c-changed` token, including rows set on only one side.
-- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. While comparing, "Hide presets" folds the type tabs and pickers into a one-line summary ("Filament: PLA vs PETG, ABS"), and the choice is remembered.
+- **Scroll only the table.** The screen fills the window: the header, pickers, editing toolbar, and filter row stay in view, and only the table scrolls (`.diff-scroll`), under its sticky header. Windows too short for that (under 420 px tall) scroll as a whole. The header row holds the title and the Filament/Process tabs. While comparing, a small chevron button centered on the accent rule under the pickers ("Hide presets" / "Show presets", as its tooltip and accessible name) folds the pickers into a one-line summary in the header ("PLA vs PETG, ABS"), and the choice is remembered. The "Choose targets" button has a joined clear button (an "X") that takes every target out, asking first if any has unsaved changes.
 - **Remember preferences through `usePreference`** (UI) and `ComparerApp.preferences` (app), which sit on the host's `SettingsStore`. They're conveniences: a store that fails or is missing only costs the remembered value, never an error.
 
 ### Picking presets
@@ -182,7 +183,7 @@ orca-slicer-profile-comparer/
 │   │       ├── ComparerRoot.tsx    # the whole UI; composition roots render this
 │   │       ├── ComparerScreen.tsx
 │   │       ├── features/       # preset-picker/ (incl. the target picker), diff-view/, editing/, save-flow/; (planned) settings/
-│   │       ├── components/     # shared building blocks: InfoTip, Dialog, ErrorMessage
+│   │       ├── components/     # shared building blocks: InfoTip, IconButton, Dialog, ErrorMessage
 │   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context
 │   │       └── theme/          # base.css (components), desktop.css and orca.css (token values)

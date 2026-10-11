@@ -532,6 +532,26 @@ describe('editing', () => {
       expect(screen.getByText('Choose targets to compare with PLA.')).toBeInTheDocument();
     });
 
+    it('clears every target at once, asking first if any has unsaved changes', async () => {
+      const { user } = setup();
+      const clear = await screen.findByRole('button', { name: 'Clear targets' });
+      expect(clear).toBeDisabled();
+      await compare(user, 'PLA', 'ASA', 'Nylon');
+      await copy(user, 'Nozzle temperature');
+
+      await user.click(screen.getByRole('button', { name: 'Clear targets' }));
+      const dialog = screen.getByRole('dialog', { name: 'Discard unsaved changes?' });
+      expect(dialog).toHaveTextContent(
+        'Taking ASA, Nylon out of the comparison loses their unsaved changes.',
+      );
+      await user.click(within(dialog).getByRole('button', { name: 'Discard changes' }));
+
+      expect(screen.getByText('Choose targets to compare with PLA.')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Choose targets' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Clear targets' })).toBeDisabled();
+      expect(screen.getByText('No unsaved changes')).toBeInTheDocument();
+    });
+
     it('opens targets added later, keeping the unsaved changes', async () => {
       const { user } = setup();
       await compare(user, 'PLA', 'ASA');

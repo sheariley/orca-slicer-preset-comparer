@@ -2,6 +2,7 @@ import type { PresetRef, ProfileType } from '@comparer/core';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from './components/Dialog.tsx';
 import { ErrorMessage } from './components/ErrorMessage.tsx';
+import { ChevronIcon, CloseIcon, IconButton } from './components/IconButton.tsx';
 import { InfoTip } from './components/InfoTip.tsx';
 import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
 import { PresetPicker } from './features/preset-picker/PresetPicker.tsx';
@@ -100,7 +101,7 @@ export function ComparerScreen() {
 
   const presetList = presets.status === 'done' ? presets.value : [];
 
-  // The type tabs and pickers can fold away to a summary line, leaving more room for the table.
+  // The pickers can fold away to a summary line, leaving more room for the table.
   // Only while comparing: with nothing chosen, they're all there is.
   const selectionId = useId();
   const [hidePresets, setHidePresets] = usePreference('layout.hidePresets', false, isBoolean);
@@ -112,44 +113,6 @@ export function ComparerScreen() {
       <div className="comparer-top">
         <header className="comparer-header">
           <h1>Profile Comparer</h1>
-          {collapsed && base && (
-            <p className="selection-summary">
-              {TYPES.find((option) => option.type === type)?.label}: <strong>{base.name}</strong> vs{' '}
-              <strong>{targets.map((target) => target.name).join(', ')}</strong>
-            </p>
-          )}
-          {!app.capabilities.canSave && (
-            <InfoTip
-              subject="read-only mode"
-              content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
-            >
-              <span className="badge">Read-only</span>
-            </InfoTip>
-          )}
-          {comparing && (
-            <button
-              type="button"
-              className="collapse-button"
-              aria-expanded={!collapsed}
-              aria-controls={selectionId}
-              onClick={() => setHidePresets(!collapsed)}
-            >
-              <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
-                <path
-                  d={collapsed ? 'M4 6l4 4 4-4' : 'M4 10l4-4 4 4'}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="1.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              {collapsed ? 'Show presets' : 'Hide presets'}
-            </button>
-          )}
-        </header>
-
-        <div id={selectionId} className="selection" hidden={collapsed}>
           <div className="type-tabs" role="tablist" aria-label="Profile type">
             {TYPES.map(({ type: value, label }) => (
               <button
@@ -162,6 +125,23 @@ export function ComparerScreen() {
               </button>
             ))}
           </div>
+          {collapsed && base && (
+            <p className="selection-summary">
+              <strong>{base.name}</strong> vs{' '}
+              <strong>{targets.map((target) => target.name).join(', ')}</strong>
+            </p>
+          )}
+          {!app.capabilities.canSave && (
+            <InfoTip
+              subject="read-only mode"
+              content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
+            >
+              <span className="badge">Read-only</span>
+            </InfoTip>
+          )}
+        </header>
+
+        <div id={selectionId} className="selection" hidden={collapsed}>
           {presets.status === 'failed' ? (
             <ErrorMessage error={presets.error} />
           ) : (
@@ -173,19 +153,27 @@ export function ComparerScreen() {
                 </span>
                 <div className="targets-control">
                   {/* The targets show as the table's columns, so the button only counts them. */}
-                  <button
-                    type="button"
-                    {...(base === null
-                      ? { 'aria-describedby': `${selectionId}-targets-hint` }
-                      : {})}
-                    // Targets are compared with the base, so the base comes first.
-                    disabled={presets.status !== 'done' || base === null}
-                    onClick={() => setChoosingTargets(true)}
-                  >
-                    {targets.length === 0
-                      ? 'Choose targets'
-                      : `${targets.length} ${targets.length === 1 ? 'target' : 'targets'} chosen`}
-                  </button>
+                  <div className="button-group">
+                    <button
+                      type="button"
+                      {...(base === null
+                        ? { 'aria-describedby': `${selectionId}-targets-hint` }
+                        : {})}
+                      // Targets are compared with the base, so the base comes first.
+                      disabled={presets.status !== 'done' || base === null}
+                      onClick={() => setChoosingTargets(true)}
+                    >
+                      {targets.length === 0
+                        ? 'Choose targets'
+                        : `${targets.length} ${targets.length === 1 ? 'target' : 'targets'} chosen`}
+                    </button>
+                    <IconButton
+                      label="Clear targets"
+                      icon={<CloseIcon />}
+                      disabled={targets.length === 0}
+                      onClick={() => changeTargets([])}
+                    />
+                  </div>
                   {base === null && (
                     <span className="targets-hint" id={`${selectionId}-targets-hint`}>
                       Choose a base preset first
@@ -196,6 +184,17 @@ export function ComparerScreen() {
             </div>
           )}
         </div>
+        {/* Sits on the accent rule under the pickers. */}
+        {comparing && (
+          <IconButton
+            className="collapse-button"
+            label={collapsed ? 'Show presets' : 'Hide presets'}
+            icon={<ChevronIcon up={!collapsed} />}
+            aria-expanded={!collapsed}
+            aria-controls={selectionId}
+            onClick={() => setHidePresets(!collapsed)}
+          />
+        )}
       </div>
 
       {session.status === 'loading' && <p className="status">Comparing…</p>}

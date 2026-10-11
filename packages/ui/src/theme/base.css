@@ -68,6 +68,7 @@ body {
 
 /* The header and preset pickers, set off from the comparison below by an accent rule. */
 .comparer-top {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -75,10 +76,7 @@ body {
   border-bottom: 2px solid var(--c-accent);
 }
 
-/*
- * The type tabs share a row with the pickers, lined up with the dropdowns (under their labels).
- * Narrow windows wrap the pickers onto the next row.
- */
+/* The pickers, under the header (title and type tabs). */
 .selection {
   display: flex;
   flex-wrap: wrap;
@@ -100,11 +98,60 @@ body {
   white-space: nowrap;
 }
 
-button.collapse-button {
+/*
+ * "Hide presets" / "Show presets": a chevron centered on the accent rule under the pickers. It's
+ * short, so it stays clear of the pickers above and the toolbar below, yet wide enough to hit
+ * easily with a mouse. (An exception to the 32 px touch-target rule, asked for by the user.)
+ */
+button.icon-button.collapse-button {
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  z-index: 1;
+  width: 48px;
+  height: 18px;
+  min-height: 0;
+  transform: translate(-50%, 50%);
+  border: 2px solid var(--c-accent);
+  border-radius: 999px;
+  background: var(--c-bg);
+  color: var(--c-accent);
+}
+
+button.icon-button.collapse-button:hover {
+  background: var(--c-accent);
+  color: var(--c-accent-fg);
+}
+
+/* Buttons joined into one control, e.g. "Choose targets" and its clear button. */
+.button-group {
   display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
+}
+
+.button-group > button {
+  border-radius: 0;
+}
+
+.button-group > button:first-child {
+  border-radius: 4px 0 0 4px;
+}
+
+.button-group > button:last-child {
+  margin-left: -1px;
+  border-radius: 0 4px 4px 0;
+}
+
+.button-group > button:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.button-group > button.icon-button {
+  width: 32px;
+  height: auto;
+  border-color: var(--c-border);
+  background: var(--c-surface);
+  color: inherit;
 }
 
 /* Too narrow to share the header row: the summary takes a line of its own, under it. */
@@ -249,15 +296,16 @@ input[type='text'] {
   left: var(--select-width);
 }
 
+/* An accent rule on its right marks where the pinned columns end. */
 .diff .pin-base {
   left: calc(var(--select-width) + var(--setting-width));
-  box-shadow: inset -1px 0 0 var(--c-border);
+  box-shadow: inset -3px 0 0 var(--c-accent);
 }
 
 .diff td.pin-base.is-edited {
   box-shadow:
     inset 3px 0 0 var(--c-accent),
-    inset -1px 0 0 var(--c-border);
+    inset -3px 0 0 var(--c-accent);
 }
 
 /* Below a medium width, there's no room to pin them: everything scrolls together. */
