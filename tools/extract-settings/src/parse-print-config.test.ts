@@ -31,6 +31,19 @@ const std::vector<std::string> filament_extruder_override_keys = {
     def->min = 0;
     def->set_default_value(new ConfigOptionFloats { 2. });
 
+    auto def_top_fill_pattern = def = this->add("top_surface_pattern", coEnum);
+    def->label = L("Top surface pattern");
+    def->enum_values.push_back("concentric");
+    def->enum_values.emplace_back("zig-zag");
+    def->enum_labels.push_back(L("Concentric"));
+    def->enum_labels.emplace_back(L("Zig Zag"));
+    // def->enum_labels.push_back(L("Retired"));
+
+    def = this->add("bottom_surface_pattern", coEnum);
+    def->label = L("Bottom surface pattern");
+    def->enum_values = def_top_fill_pattern->enum_values;
+    def->enum_labels = def_top_fill_pattern->enum_labels;
+
     def = this->add("hot_plate_temp", coInts);
     def->label = L("Other layers");
     def->sidetext = L(u8"\\u2103" /* °C */);	// degrees Celsius
@@ -86,6 +99,17 @@ describe('parsePrintConfig', () => {
     expect(settings.get('print_order')?.default).toBe('default');
   });
 
+  it("reads an option's enum values and labels, and copies another option's", () => {
+    expect(settings.get('top_surface_pattern')).toMatchObject({
+      enumValues: ['concentric', 'zig-zag'],
+      enumLabels: ['Concentric', 'Zig Zag'],
+    });
+    expect(settings.get('bottom_surface_pattern')).toMatchObject({
+      enumValues: ['concentric', 'zig-zag'],
+      enumLabels: ['Concentric', 'Zig Zag'],
+    });
+  });
+
   it('copies printer settings into their filament overrides', () => {
     expect(settings.get('filament_retraction_length')).toEqual({
       label: 'Length',
@@ -104,7 +128,7 @@ describe('parsePrintConfig', () => {
 
   it('skips options with computed keys', () => {
     expect(settings.has('opt_key')).toBe(false);
-    expect(settings.size).toBe(7);
+    expect(settings.size).toBe(9);
   });
 });
 

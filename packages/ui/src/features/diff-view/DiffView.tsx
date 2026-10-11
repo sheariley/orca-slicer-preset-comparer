@@ -4,7 +4,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type CSSProperties } fr
 import { CloseIcon, IconButton } from '../../components/IconButton.tsx';
 import { InfoTip } from '../../components/InfoTip.tsx';
 import { useComparerApp } from '../../hooks/useComparerApp.ts';
-import { settingNames, unitFor } from './format.ts';
+import { isBoolean, usePreference } from '../../hooks/usePreference.ts';
+import { labeledValue, settingNames, unitFor } from './format.ts';
 
 /** What DiffView needs for editing: selecting settings to copy. Without it, the view is read-only. */
 export interface DiffEditing {
@@ -17,6 +18,9 @@ export interface DiffEditing {
 
 const NO_KEYS: ReadonlySet<string> = new Set();
 
+/** The section of settings OrcaSlicer's tabs don't place. */
+const OTHER = 'other';
+
 /** Where a preset's value for a setting came from, in words. */
 function sourceText(profile: ResolvedProfile, settingKey: string, edited: boolean): string {
   const source = profile.settings.get(settingKey)?.definedBy;
@@ -25,16 +29,32 @@ function sourceText(profile: ResolvedProfile, settingKey: string, edited: boolea
   return edited ? `${text} (unsaved change)` : text;
 }
 
-/** A row's tip: the setting's description, then where each preset's value came from. */
+/** A labeled value's stored form (e.g. "Disabled (disabled_fuzzy)"), or undefined if it has no label. */
+function storedText(
+  profile: ResolvedProfile,
+  settingKey: string,
+  valueLabels: ReadonlyMap<string, string> | undefined,
+): string | undefined {
+  const value = profile.settings.get(settingKey)?.value;
+  if (!value || !valueLabels || !value.some((item) => valueLabels.has(item))) return undefined;
+  return `${labeledValue(value, valueLabels)} (${value.join(', ')})`;
+}
+
+/**
+ * A row's tip: the setting's description, then where each preset's value came from (with the
+ * value as stored, for values shown by their labels).
+ */
 function RowTip({
   profiles,
   settingKey,
   description,
+  valueLabels,
   isEdited,
 }: {
   profiles: readonly ResolvedProfile[];
   settingKey: string;
   description: string | undefined;
+  valueLabels: ReadonlyMap<string, string> | undefined;
   isEdited: (id: string) => boolean;
 }) {
   return (
@@ -44,7 +64,13 @@ function RowTip({
         {profiles.map((profile, index) => (
           <Fragment key={profile.ref.id}>
             {index > 0 && <br />}
-            {profile.ref.name}: {sourceText(profile, settingKey, isEdited(profile.ref.id))}
+            {profile.ref.name}:{' '}
+            {[
+              storedText(profile, settingKey, valueLabels),
+              sourceText(profile, settingKey, isEdited(profile.ref.id)),
+            ]
+              .filter(Boolean)
+              .join(', ')}
           </Fragment>
         ))}
       </p>
@@ -57,6 +83,7 @@ function ValueCell({
   settingKey,
   value,
   unit,
+  valueLabels,
   edited,
   className,
 }: {
@@ -64,6 +91,7 @@ function ValueCell({
   settingKey: string;
   value: NormalizedValue | undefined;
   unit: string | undefined;
+  valueLabels: ReadonlyMap<string, string> | undefined;
   edited: boolean;
   className?: string | undefined;
 }) {
@@ -74,7 +102,7 @@ function ValueCell({
     .join(' ');
   return (
     <td className={classes || undefined}>
-      {value ? value.join(', ') : '—'}
+      {value ? labeledValue(value, valueLabels) : '—'}
       {shownUnit && <span className="unit"> {shownUnit}</span>}
       {edited && <span className="visually-hidden"> (unsaved)</span>}
     </td>
@@ -82,7 +110,15 @@ function ValueCell({
 }
 
 /** Selects or clears every row shown; mixed when only some are selected. */
-function SelectAll({ editing, keys }: { editing: DiffEditing; keys: readonly string[] }) {
+function SelectAll({
+  editing,
+  keys,
+  label = 'Select all shown settings',
+}: {
+  editing: DiffEditing;
+  keys: readonly string[];
+  label?: string;
+}) {
   const ref = useRef<HTMLInputElement>(null);
   const count = keys.filter((key) => editing.selected.has(key)).length;
   const all = keys.length > 0 && count === keys.length;
@@ -93,7 +129,7 @@ function SelectAll({ editing, keys }: { editing: DiffEditing; keys: readonly str
     <input
       ref={ref}
       type="checkbox"
-      aria-label="Select all shown settings"
+      aria-label={label}
       checked={all}
       disabled={keys.length === 0}
       onChange={(event) => editing.onSelect(keys, event.target.checked)}
@@ -121,7 +157,11 @@ export function DiffView({
   // (e.g. leftovers from Bambu Studio in bundled profiles).
   const [hideUnknown, setHideUnknown] = useState(true);
   const [filter, setFilter] = useState('');
+  const [order, setOrder] = useState<'ascending' | 'descending'>('ascending');
+  // Sections like OrcaSlicer's settings tabs ("Quality › Layer height"), remembered.
+  const [grouped, setGrouped] = usePreference('table.groupBySection', true, isBoolean);
   const { base, targets } = comparison;
+  const type = base.ref.type;
   const profiles = [base, ...targets];
   const editedIn = (id: string) => editing?.edited.get(id) ?? NO_KEYS;
 
@@ -156,7 +196,44 @@ export function DiffView({
         needle === '' ||
         row.key.toLowerCase().includes(needle) ||
         (info?.label.toLowerCase().includes(needle) ?? false),
+    )
+    // By label as OrcaSlicer shows it, then by key (labels repeat).
+    .sort((a, b) => {
+      const byLabel =
+        (a.info?.label ?? a.row.key).localeCompare(b.info?.label ?? b.row.key, undefined, {
+          sensitivity: 'base',
+        }) || a.row.key.localeCompare(b.row.key);
+      return order === 'ascending' ? byLabel : -byLabel;
+    });
+
+  // The rows in sections, in OrcaSlicer's order; settings it doesn't place go last, in "Other".
+  // Sections with no rows to show don't appear.
+  const sections: { id: string; title?: string; rows: typeof rows }[] = [];
+  if (grouped) {
+    const byId = new Map<string, { title: string; order: number; rows: typeof rows }>();
+    for (const item of rows) {
+      const section = item.info?.sections?.[type];
+      const id = section ? `${section.page}\n${section.group}` : OTHER;
+      let entry = byId.get(id);
+      if (!entry) {
+        entry = {
+          title: section ? `${section.page} › ${section.group}` : 'Other',
+          order: section?.order ?? Number.MAX_SAFE_INTEGER,
+          rows: [],
+        };
+        byId.set(id, entry);
+      }
+      entry.rows.push(item);
+    }
+    sections.push(
+      ...[...byId]
+        .sort(([, a], [, b]) => a.order - b.order)
+        .map(([id, { title, rows: sectionRows }]) => ({ id, title, rows: sectionRows })),
     );
+  } else {
+    sections.push({ id: 'all', rows });
+  }
+  const columnCount = (editing ? 1 : 0) + 2 + targets.length;
 
   // Wide enough for every value column, so many targets scroll sideways instead of squeezing.
   const tableStyle = {
@@ -181,6 +258,14 @@ export function DiffView({
           />
           Only differences ({differenceCount})
         </label>
+        <label className="toggle">
+          <input
+            type="checkbox"
+            checked={grouped}
+            onChange={(event) => setGrouped(event.target.checked)}
+          />
+          Group by section
+        </label>
         {unknownCount > 0 && (
           <span className="toggle">
             <label className="toggle">
@@ -189,7 +274,7 @@ export function DiffView({
                 checked={hideUnknown}
                 onChange={(event) => setHideUnknown(event.target.checked)}
               />
-              Hide settings OrcaSlicer doesn't use ({unknownCount})
+              Hide deprecated ({unknownCount})
             </label>
             <InfoTip
               subject="hidden settings"
@@ -216,8 +301,27 @@ export function DiffView({
                   <SelectAll editing={editing} keys={rows.map(({ row }) => row.key)} />
                 </th>
               )}
-              <th scope="col" className="pinned pin-setting">
-                Setting
+              <th scope="col" className="pinned pin-setting" aria-sort={order}>
+                <button
+                  type="button"
+                  className="sort-button"
+                  onClick={() => setOrder(order === 'ascending' ? 'descending' : 'ascending')}
+                >
+                  Setting
+                  <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">
+                    <path
+                      d={order === 'ascending' ? 'M4 10l4-4 4 4' : 'M4 6l4 4 4-4'}
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                  <span className="visually-hidden">
+                    {order === 'ascending' ? ', sorted A to Z' : ', sorted Z to A'}
+                  </span>
+                </button>
               </th>
               <ColumnHeader
                 profile={base}
@@ -236,72 +340,93 @@ export function DiffView({
               ))}
             </tr>
           </thead>
-          <tbody>
-            {rows.map(({ row, info }) => {
-              const label = info?.label ?? row.key;
-              const name = names.get(row.key) ?? label;
-              return (
-                <tr
-                  key={row.key}
-                  data-status={row.differs ? 'changed' : 'same'}
-                  data-selected={editing?.selected.has(row.key) || undefined}
-                >
+          {sections.map((section) => (
+            <tbody key={section.id}>
+              {section.title !== undefined && (
+                <tr className="section-row">
                   {editing && (
                     <td className="select-cell pinned pin-select">
-                      <input
-                        type="checkbox"
-                        aria-label={`Select ${name}`}
-                        checked={editing.selected.has(row.key)}
-                        onChange={(event) => editing.onSelect([row.key], event.target.checked)}
+                      <SelectAll
+                        editing={editing}
+                        keys={section.rows.map(({ row }) => row.key)}
+                        label={`Select all shown in ${section.title}`}
                       />
                     </td>
                   )}
-                  <th scope="row" className="pinned pin-setting">
-                    <InfoTip
-                      subject={name}
-                      content={
-                        <RowTip
-                          profiles={profiles}
-                          settingKey={row.key}
-                          description={info?.tooltip}
-                          isEdited={(id) => editedIn(id).has(row.key)}
-                        />
-                      }
-                    >
-                      <span className="setting-label">{label}</span>
-                    </InfoTip>
-                    {info && info.label !== row.key && (
-                      <code className="setting-key">{row.key}</code>
-                    )}
+                  <th scope="colgroup" colSpan={columnCount - (editing ? 1 : 0)}>
+                    <span className="section-title">{section.title}</span>
                   </th>
-                  <ValueCell
-                    className="pinned pin-base"
-                    profile={base}
-                    settingKey={row.key}
-                    value={row.base}
-                    unit={info?.unit}
-                    edited={editedIn(base.ref.id).has(row.key)}
-                  />
-                  {targets.map((target, index) => (
-                    <ValueCell
-                      key={target.ref.id}
-                      // In a row that differs, a value that matches the base is muted.
-                      className={
-                        row.differs && row.targets[index]!.status === 'same'
-                          ? 'matches-base'
-                          : undefined
-                      }
-                      profile={target}
-                      settingKey={row.key}
-                      value={row.targets[index]!.value}
-                      unit={info?.unit}
-                      edited={editedIn(target.ref.id).has(row.key)}
-                    />
-                  ))}
                 </tr>
-              );
-            })}
-          </tbody>
+              )}
+              {section.rows.map(({ row, info }) => {
+                const label = info?.label ?? row.key;
+                const name = names.get(row.key) ?? label;
+                return (
+                  <tr
+                    key={row.key}
+                    data-status={row.differs ? 'changed' : 'same'}
+                    data-selected={editing?.selected.has(row.key) || undefined}
+                  >
+                    {editing && (
+                      <td className="select-cell pinned pin-select">
+                        <input
+                          type="checkbox"
+                          aria-label={`Select ${name}`}
+                          checked={editing.selected.has(row.key)}
+                          onChange={(event) => editing.onSelect([row.key], event.target.checked)}
+                        />
+                      </td>
+                    )}
+                    <th scope="row" className="pinned pin-setting">
+                      <InfoTip
+                        subject={name}
+                        content={
+                          <RowTip
+                            profiles={profiles}
+                            settingKey={row.key}
+                            description={info?.tooltip}
+                            valueLabels={info?.valueLabels}
+                            isEdited={(id) => editedIn(id).has(row.key)}
+                          />
+                        }
+                      >
+                        <span className="setting-label">{label}</span>
+                      </InfoTip>
+                      {info && info.label !== row.key && (
+                        <code className="setting-key">{row.key}</code>
+                      )}
+                    </th>
+                    <ValueCell
+                      className="pinned pin-base"
+                      profile={base}
+                      settingKey={row.key}
+                      value={row.base}
+                      unit={info?.unit}
+                      valueLabels={info?.valueLabels}
+                      edited={editedIn(base.ref.id).has(row.key)}
+                    />
+                    {targets.map((target, index) => (
+                      <ValueCell
+                        key={target.ref.id}
+                        // In a row that differs, a value that matches the base is muted.
+                        className={
+                          row.differs && row.targets[index]!.status === 'same'
+                            ? 'matches-base'
+                            : undefined
+                        }
+                        profile={target}
+                        settingKey={row.key}
+                        value={row.targets[index]!.value}
+                        unit={info?.unit}
+                        valueLabels={info?.valueLabels}
+                        edited={editedIn(target.ref.id).has(row.key)}
+                      />
+                    ))}
+                  </tr>
+                );
+              })}
+            </tbody>
+          ))}
         </table>
         {rows.length === 0 && <p className="empty">No settings match.</p>}
       </div>

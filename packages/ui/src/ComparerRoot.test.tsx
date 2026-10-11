@@ -89,10 +89,20 @@ function renderComparer(
               label: 'Nozzle temperature',
               unit: '℃',
               tooltip: 'Temperature after the first layer.',
+              sections: { filament: { page: 'Filament', group: 'Print temperature', order: 3 } },
             }
           : key === 'bambu_only'
             ? undefined
-            : { key, label: key },
+            : key === 'fuzzy_skin'
+              ? {
+                  key,
+                  label: 'Fuzzy skin',
+                  valueLabels: new Map([
+                    ['disabled_fuzzy', 'Disabled'],
+                    ['all', 'Contour and hole'],
+                  ]),
+                }
+              : { key, label: key },
       defaultsFor: () => new Map([['filament_density', ['1.24']]]),
       legacyKeys: () => ({ obsolete: new Set<string>(), renamed: new Map<string, string>() }),
       keyRules: () => ({ owned: new Set<string>(), perVariant: new Set<string>() }),
@@ -107,7 +117,10 @@ describe('ComparerRoot', () => {
     renderComparer();
 
     const table = await compare(user, 'PLA', 'PETG');
-    const rows = within(table).getAllByRole('row').slice(1);
+    // Setting rows only: not the header row or section headers.
+    const rows = within(table)
+      .getAllByRole('row')
+      .filter((row) => row.hasAttribute('data-status'));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toHaveTextContent('Nozzle temperature');
     expect(rows[0]).toHaveTextContent('210');
@@ -143,6 +156,24 @@ describe('ComparerRoot', () => {
     expect(screen.getByRole('tooltip')).toHaveTextContent('PETG: set in "PETG"');
   });
 
+  it("shows values by OrcaSlicer's labels, and the stored value in the row's tip", async () => {
+    const user = userEvent.setup();
+    renderComparer(false, undefined, [
+      filament('Fuzzy A', { fuzzy_skin: 'disabled_fuzzy' }),
+      filament('Fuzzy B', { fuzzy_skin: 'all' }),
+    ]);
+    await compare(user, 'Fuzzy A', 'Fuzzy B');
+
+    const row = within(screen.getByRole('table')).getByText('Fuzzy skin').closest('tr')!;
+    const cells = within(row).getAllByRole('cell');
+    expect(cells[0]).toHaveTextContent('Disabled');
+    expect(cells[1]).toHaveTextContent('Contour and hole');
+    await user.click(within(row).getByRole('button', { name: 'About Fuzzy skin' }));
+    expect(screen.getByRole('tooltip')).toHaveTextContent(
+      'Fuzzy A: Disabled (disabled_fuzzy), set in "Fuzzy A"',
+    );
+  });
+
   it('shows the setting description in the info tip', async () => {
     const user = userEvent.setup();
     renderComparer();
@@ -160,13 +191,58 @@ describe('ComparerRoot', () => {
     const table = await compare(user, 'PLA', 'PETG');
     expect(within(table).queryByText('bambu_only')).not.toBeInTheDocument();
 
-    await user.click(screen.getByLabelText(/Hide settings OrcaSlicer doesn't use \(1\)/));
+    await user.click(screen.getByLabelText(/Hide deprecated \(1\)/));
     expect(within(table).getByText('bambu_only')).toBeInTheDocument();
   });
 
   it('marks a host that cannot save as read-only', async () => {
     renderComparer(false);
     expect(await screen.findByText('Read-only')).toBeInTheDocument();
+  });
+
+  describe('sorting and grouping', () => {
+    const settingRows = () =>
+      within(screen.getByRole('table'))
+        .getAllByRole('row')
+        .filter((row) => row.hasAttribute('data-status'))
+        .map(
+          (row) => within(row).getByRole('rowheader').querySelector('.setting-label')!.textContent,
+        );
+
+    it('sorts by the Setting column, A to Z by label, and the other way from its header', async () => {
+      const user = userEvent.setup();
+      renderComparer();
+      await compare(user, 'PLA', 'PETG');
+      await user.click(screen.getByLabelText(/Only differences/));
+      // One list, not sections, to see the whole order.
+      await user.click(screen.getByLabelText('Group by section'));
+
+      expect(settingRows()).toEqual(['fan_max_speed', 'filament_density', 'Nozzle temperature']);
+      const header = screen.getByRole('columnheader', { name: /Setting/ });
+      expect(header).toHaveAttribute('aria-sort', 'ascending');
+      await user.click(within(header).getByRole('button'));
+      expect(header).toHaveAttribute('aria-sort', 'descending');
+      expect(settingRows()).toEqual(['Nozzle temperature', 'filament_density', 'fan_max_speed']);
+    });
+
+    it("groups settings under OrcaSlicer's sections, in its order, and remembers the choice", async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings();
+      renderComparer(false, settings);
+      await compare(user, 'PLA', 'PETG');
+      await user.click(screen.getByLabelText(/Only differences/));
+
+      const sectionTitles = () =>
+        [...screen.getByRole('table').querySelectorAll('.section-title')].map(
+          (el) => el.textContent,
+        );
+      // The test catalog places only the nozzle temperature; the rest are "Other", last.
+      expect(sectionTitles()).toEqual(['Filament › Print temperature', 'Other']);
+
+      await user.click(screen.getByLabelText('Group by section'));
+      expect(sectionTitles()).toEqual([]);
+      expect(settings.saved).toEqual({ 'table.groupBySection': false });
+    });
   });
 
   describe('choosing the base', () => {
@@ -328,7 +404,7 @@ describe('ComparerRoot', () => {
       expect(names(dialog)).toEqual(['ABS', 'Generic PLA', 'PETG', 'PETG HF', 'PLA @base']);
     });
 
-    it('tells apart presets with the same name by their user folder', async () => {
+    it('tells apart presets with the same name by their user folder ("account" for an account\'s)', async () => {
       const user = userEvent.setup();
       renderComparer(false, undefined, [
         {
@@ -339,14 +415,45 @@ describe('ComparerRoot', () => {
       const dialog = await openPicker(user);
 
       expect(
-        within(dialog).getByRole('checkbox', { name: 'Choose PETG (1234 folder)' }),
+        within(dialog).getByRole('checkbox', { name: 'Choose PETG (account)' }),
       ).toBeInTheDocument();
-      expect(within(dialog).getByText('1234 folder')).toBeInTheDocument();
+      expect(within(dialog).getByText('account')).toBeInTheDocument();
       // The fixture's own PETG has no folder of its own.
       expect(
         within(dialog).getByRole('checkbox', { name: 'Choose PETG (user)' }),
       ).toBeInTheDocument();
       expect(within(dialog).getByRole('checkbox', { name: 'Choose ABS' })).toBeInTheDocument();
+    });
+
+    it('names each account by the start of its id when there are several, and "default"', async () => {
+      const user = userEvent.setup();
+      const copy = (folder: string) => ({
+        ref: {
+          id: `${folder}/ABS`,
+          name: 'ABS',
+          type: 'filament' as const,
+          origin: 'user' as const,
+          folder,
+        },
+        content: { name: 'ABS' },
+      });
+      renderComparer(false, undefined, [
+        copy('default'),
+        copy('1234abcd-0000'),
+        copy('5678efgh-0000'),
+      ]);
+      const dialog = await openPicker(user);
+
+      expect(
+        names(dialog)
+          .filter((name) => name.startsWith('ABS'))
+          .sort(),
+      ).toEqual([
+        'ABS (account 1234abcd)',
+        'ABS (account 5678efgh)',
+        'ABS (default)',
+        'ABS (user)',
+      ]);
     });
   });
 });

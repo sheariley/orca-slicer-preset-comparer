@@ -307,6 +307,18 @@ input[type='text'] {
   color: var(--c-fg);
 }
 
+/* A section's header row ("Quality › Layer height"), when the table is grouped. */
+.diff tbody tr.section-row > * {
+  background: var(--c-surface);
+  font-weight: 600;
+}
+
+/* Its title stays in view while the targets scroll sideways. */
+.diff .section-title {
+  position: sticky;
+  left: calc(var(--select-width) + 8px);
+}
+
 /* In a row that differs, a target value that's the same as the base's (selected rows excepted). */
 .diff tbody tr[data-status='changed']:not([data-selected]) td.matches-base {
   color: var(--c-muted);

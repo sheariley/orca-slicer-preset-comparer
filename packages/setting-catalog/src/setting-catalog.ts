@@ -5,6 +5,7 @@ import type {
   RawValue,
   SettingCatalog,
   SettingInfo,
+  SettingSection,
 } from '@comparer/core';
 import generated from '../data/settings.json' with { type: 'json' };
 
@@ -17,6 +18,11 @@ export interface CatalogEntry {
   readonly unit?: string;
   /** The built-in default, as OrcaSlicer writes it to a profile file. */
   readonly default?: RawValue;
+  /** The values it offers and their labels, in the same order. */
+  readonly enumValues?: readonly string[];
+  readonly enumLabels?: readonly string[];
+  /** Where OrcaSlicer's settings tab shows it, per preset type. */
+  readonly sections?: Readonly<Partial<Record<ProfileType, SettingSection>>>;
 }
 
 /** The shape of data/settings.json. */
@@ -36,6 +42,7 @@ export interface CatalogData {
 export function createSettingCatalog(data: CatalogData = generated): SettingCatalog {
   const defaultsByType = new Map<ProfileType, ReadonlyMap<string, RawValue>>();
   const keyRulesByType = new Map<ProfileType, KeyRules>();
+  const described = new Map<string, SettingInfo>();
   const legacyKeys: LegacyKeys = {
     obsolete: new Set(data.legacy?.obsolete),
     renamed: new Map(Object.entries(data.legacy?.renamed ?? {})),
@@ -43,8 +50,16 @@ export function createSettingCatalog(data: CatalogData = generated): SettingCata
 
   return {
     describe(key) {
+      const cached = described.get(key);
+      if (cached) return cached;
       const entry = data.settings[key];
       if (!entry) return undefined;
+      // Labels pair up with values only when OrcaSlicer lists one for each.
+      const { enumValues: values, enumLabels: labels } = entry;
+      const valueLabels =
+        values && labels && values.length === labels.length
+          ? new Map(values.map((value, index) => [value, labels[index]!]))
+          : undefined;
       // OrcaSlicer's short labels ("Other layers") lean on their tab context; prefer full_label.
       const info: SettingInfo = {
         key,
@@ -52,7 +67,10 @@ export function createSettingCatalog(data: CatalogData = generated): SettingCata
         ...(entry.category ? { group: entry.category } : {}),
         ...(entry.tooltip ? { tooltip: entry.tooltip } : {}),
         ...(entry.unit ? { unit: entry.unit } : {}),
+        ...(valueLabels ? { valueLabels } : {}),
+        ...(entry.sections ? { sections: entry.sections } : {}),
       };
+      described.set(key, info);
       return info;
     },
 

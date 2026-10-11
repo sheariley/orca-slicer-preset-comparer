@@ -68,8 +68,14 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
   for (const preset of candidates) {
     nameCounts.set(preset.name, (nameCounts.get(preset.name) ?? 0) + 1);
   }
+  // OrcaSlicer's user folders: "default" (signed out) and one per account, named by its id.
+  const accounts = sortedUnique(
+    presets.flatMap((preset) =>
+      preset.folder && preset.folder !== 'default' ? [preset.folder] : [],
+    ),
+  );
   const whereabouts = (preset: PresetRef) =>
-    (nameCounts.get(preset.name) ?? 0) > 1 ? placeOf(preset) : undefined;
+    (nameCounts.get(preset.name) ?? 0) > 1 ? placeOf(preset, accounts) : undefined;
 
   const needle = text.trim().toLowerCase();
   const shown = candidates
@@ -287,10 +293,15 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
 /** The vendor a preset belongs to: its own folder's, or the one its system parent is in. */
 const vendorOf = (preset: PresetRef) => preset.details?.vendor ?? preset.vendor;
 
-/** Where a preset lives, to tell it from one with the same name. */
-function placeOf(preset: PresetRef): string {
+/**
+ * Where a preset lives, to tell it from one with the same name: its vendor, or its user folder
+ * ("default", or "account" for an account's; with several accounts, the start of each id).
+ */
+function placeOf(preset: PresetRef, accounts: readonly string[]): string {
   if (preset.origin === 'system') return preset.vendor ?? 'system';
-  return preset.folder ? `${preset.folder} folder` : 'user';
+  if (!preset.folder) return 'user';
+  if (preset.folder === 'default') return 'default';
+  return accounts.length > 1 ? `account ${preset.folder.slice(0, 8)}` : 'account';
 }
 
 function sortedUnique(values: readonly string[]): string[] {

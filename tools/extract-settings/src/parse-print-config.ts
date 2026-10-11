@@ -16,6 +16,14 @@ import {
   type DefaultsContext,
 } from './parse-defaults.ts';
 
+/** Where a setting appears in OrcaSlicer's settings UI: a tab page and an option group on it. */
+export interface Section {
+  readonly page: string;
+  readonly group: string;
+  /** The section's position among its preset type's sections, in OrcaSlicer's order. */
+  readonly order: number;
+}
+
 export interface ExtractedSetting {
   label?: string;
   fullLabel?: string;
@@ -23,6 +31,11 @@ export interface ExtractedSetting {
   tooltip?: string;
   unit?: string;
   default?: DefaultValue;
+  /** The values an option offers (`enum_values`) and their labels (`enum_labels`), in order. */
+  enumValues?: string[];
+  enumLabels?: string[];
+  /** Where OrcaSlicer's settings tabs show it, per preset type (see parse-tab.ts). */
+  sections?: Partial<Record<'filament' | 'process', Section>>;
 }
 
 export interface SkippedDefault {
@@ -40,7 +53,7 @@ const ADD_PATTERN = /this->add(?:_nullable)?\(\s*"([A-Za-z0-9_]+)"\s*,\s*co[A-Za
 const FIELD_PATTERN = /def->(label|full_label|category|tooltip|sidetext)\s*=/g;
 const DEFAULT_PATTERN = /def->set_default_value\s*(?=\()/g;
 
-const FIELD_NAMES: Record<string, Exclude<keyof ExtractedSetting, 'default'>> = {
+const FIELD_NAMES: Record<string, 'label' | 'fullLabel' | 'category' | 'tooltip' | 'unit'> = {
   label: 'label',
   full_label: 'fullLabel',
   category: 'category',
@@ -54,6 +67,15 @@ export function parsePrintConfig(source: string, context: DefaultsContext): Prin
   const settings = new Map<string, ExtractedSetting>();
   const skippedDefaults: SkippedDefault[] = [];
   const adds = [...code.matchAll(ADD_PATTERN)];
+  // Options that copy another's enum lists name it by a variable:
+  //   auto def_top_fill_pattern = def = this->add("top_surface_pattern", coEnum);
+  //   def->enum_values = def_top_fill_pattern->enum_values;
+  const keysByVariable = new Map(
+    [...code.matchAll(/auto\s+(\w+)\s*=\s*def\s*=\s*this->add(?:_nullable)?\(\s*"(\w+)"/g)].map(
+      (match) => [match[1]!, match[2]!],
+    ),
+  );
+  const copiedEnums: { key: string; from: string; list: 'enumValues' | 'enumLabels' }[] = [];
 
   adds.forEach((match, index) => {
     const key = match[1]!;
@@ -68,6 +90,19 @@ export function parsePrintConfig(source: string, context: DefaultsContext): Prin
       const statement = readStatement(block, field.index + field[0].length);
       const value = firstStringArgument(statement);
       if (value !== undefined && value.length > 0) setting[FIELD_NAMES[field[1]!]!] = value;
+    }
+
+    for (const list of ['enumValues', 'enumLabels'] as const) {
+      const field = list === 'enumValues' ? 'enum_values' : 'enum_labels';
+      const items = [
+        ...block.matchAll(new RegExp(`def->${field}\\.(?:push_back|emplace_back)\\s*(?=\\()`, 'g')),
+      ].flatMap(
+        (call) => firstStringArgument(readStatement(block, call.index + call[0].length)) ?? [],
+      );
+      if (items.length > 0) setting[list] = items;
+      const copy = new RegExp(`def->${field}\\s*=\\s*(\\w+)->${field}`).exec(block);
+      const from = copy && keysByVariable.get(copy[1]!);
+      if (from) copiedEnums.push({ key, from, list });
     }
 
     const defaultCall = DEFAULT_PATTERN.exec(block);
@@ -101,6 +136,11 @@ export function parsePrintConfig(source: string, context: DefaultsContext): Prin
       }
       settings.set(key!, setting);
     }
+  }
+
+  for (const { key, from, list } of copiedEnums) {
+    const items = settings.get(from)?.[list];
+    if (items) settings.get(key)![list] = [...items];
   }
 
   // Filament overrides of printer settings (filament_retraction_length overrides
@@ -249,7 +289,7 @@ function readStatement(text: string, from: number): string {
 }
 
 /** Removes // and /* *\/ comments that aren't inside string literals. */
-function stripComments(text: string): string {
+export function stripComments(text: string): string {
   let output = '';
   for (let i = 0; i < text.length; i++) {
     const char = text[i]!;

@@ -9,11 +9,27 @@ export function unitFor(value: NormalizedValue, unit: string | undefined): strin
   return unit.replace(/\s+or\s+%$/, '');
 }
 
-/** A value as text, with its unit: array elements joined with commas. */
-export function formatValue(value: NormalizedValue | undefined, unit: string | undefined): string {
+/**
+ * A value's elements as OrcaSlicer shows them: an option's labels for its values ("Disabled",
+ * not "disabled_fuzzy") where it has them, else as stored.
+ */
+export function labeledValue(
+  value: NormalizedValue,
+  valueLabels: ReadonlyMap<string, string> | undefined,
+): string {
+  return value.map((item) => valueLabels?.get(item) ?? item).join(', ');
+}
+
+/** A value as text, with its unit: array elements joined with commas, labeled where possible. */
+export function formatValue(
+  value: NormalizedValue | undefined,
+  unit: string | undefined,
+  valueLabels?: ReadonlyMap<string, string>,
+): string {
   if (value === undefined) return '—';
   const shownUnit = unitFor(value, unit);
-  return shownUnit ? `${value.join(', ')} ${shownUnit}` : value.join(', ');
+  const text = labeledValue(value, valueLabels);
+  return shownUnit ? `${text} ${shownUnit}` : text;
 }
 
 /**

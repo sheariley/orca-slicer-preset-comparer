@@ -84,11 +84,23 @@ export interface ProfileRepository {
 export interface SettingInfo {
   readonly key: string;
   readonly label: string;
-  /** Group used to organize the diff view (OrcaSlicer's category). */
+  /** OrcaSlicer's category for the setting (PrintConfig.cpp). */
   readonly group?: string;
   readonly tooltip?: string;
   /** Unit text shown after the value (e.g. "mm³/s"). */
   readonly unit?: string;
+  /** For settings with a fixed set of values: each value's label (e.g. "disabled_fuzzy" → "Disabled"). */
+  readonly valueLabels?: ReadonlyMap<string, string>;
+  /** Where OrcaSlicer's settings tab shows it, per preset type. */
+  readonly sections?: Readonly<Partial<Record<ProfileType, SettingSection>>>;
+}
+
+/** A section of OrcaSlicer's settings tab: a page ("Quality") and an option group on it. */
+export interface SettingSection {
+  readonly page: string;
+  readonly group: string;
+  /** Its position among the type's sections, in OrcaSlicer's order. */
+  readonly order: number;
 }
 
 export interface SettingCatalog {

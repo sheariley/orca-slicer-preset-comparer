@@ -17,6 +17,28 @@ describe('createSettingCatalog', () => {
     expect(catalog.describe('hot_plate_temp')?.label).toBe('Bed temperature');
   });
 
+  it("labels an option's values, and says where OrcaSlicer's tabs show it", () => {
+    const info = createSettingCatalog().describe('fuzzy_skin');
+
+    expect(info?.valueLabels?.get('disabled_fuzzy')).toBe('Disabled');
+    expect(info?.sections?.process).toMatchObject({ page: 'Others', group: 'Fuzzy skin' });
+    expect(createSettingCatalog().describe('nozzle_temperature')?.sections?.filament).toMatchObject(
+      {
+        page: 'Filament',
+        group: 'Print temperature',
+      },
+    );
+  });
+
+  it("leaves values unlabeled when the labels don't pair up with them", () => {
+    const catalog = createSettingCatalog({
+      presetTypes: {},
+      settings: { odd: { enumValues: ['a', 'b'], enumLabels: ['A'] } },
+    });
+
+    expect(catalog.describe('odd')?.valueLabels).toBeUndefined();
+  });
+
   it('returns undefined for unknown keys', () => {
     expect(
       createSettingCatalog({ presetTypes: {}, settings: {} }).describe('nope'),

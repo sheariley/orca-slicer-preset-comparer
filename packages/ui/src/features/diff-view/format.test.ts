@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatValue, settingNames, unitFor } from './format.ts';
+import { formatValue, labeledValue, settingNames, unitFor } from './format.ts';
 
 describe('unitFor', () => {
   it('shows the unit after plain numbers', () => {
@@ -36,5 +36,22 @@ describe('settingNames', () => {
     const labels: Record<string, string> = { a: 'Fan speed', b: 'Fan speed', c: 'Density' };
     const names = settingNames(['a', 'b', 'c', 'd'], (key) => labels[key] ?? key);
     expect([...names.values()]).toEqual(['Fan speed (a)', 'Fan speed (b)', 'Density', 'd']);
+  });
+});
+
+describe('labeledValue', () => {
+  const labels = new Map([
+    ['disabled_fuzzy', 'Disabled'],
+    ['all', 'Contour and hole'],
+  ]);
+
+  it("shows each element by the option's label for it, else as stored", () => {
+    expect(labeledValue(['disabled_fuzzy'], labels)).toBe('Disabled');
+    expect(labeledValue(['all', 'custom'], labels)).toBe('Contour and hole, custom');
+    expect(labeledValue(['all'], undefined)).toBe('all');
+  });
+
+  it('labels values in formatValue too', () => {
+    expect(formatValue(['disabled_fuzzy'], undefined, labels)).toBe('Disabled');
   });
 });

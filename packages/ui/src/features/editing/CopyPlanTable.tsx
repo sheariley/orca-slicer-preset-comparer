@@ -75,8 +75,8 @@ export function CopyPlanTable({
                 {label}
                 {label !== key && <code className="setting-key">{key}</code>}
               </th>
-              <td>{formatValue(values.before.get(key), info?.unit)}</td>
-              <td>{formatValue(values.after.get(key), info?.unit)}</td>
+              <td>{formatValue(values.before.get(key), info?.unit, info?.valueLabels)}</td>
+              <td>{formatValue(values.after.get(key), info?.unit, info?.valueLabels)}</td>
               <td>
                 {keep !== undefined ? (
                   <span className="toggle">
