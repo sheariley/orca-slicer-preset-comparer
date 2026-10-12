@@ -144,7 +144,7 @@ The host interface (Tauri) and the plugin interface (OrcaSlicer's Python `orca` 
 Folders marked `(planned)` don't exist yet.
 
 ```
-orca-slicer-profile-comparer/
+orca-slicer-preset-comparer/
 ├── AGENTS.md
 ├── TASKS.md                    # open work, by area and priority
 ├── README.md
@@ -212,7 +212,7 @@ orca-slicer-profile-comparer/
 │   │   │   ├── comparer_plugin.py  # all orca.* glue: Pages capability + OrcaPresetHost
 │   │   │   ├── comparer_bridge.py  # protocol handling, stdlib only, no orca imports
 │   │   │   └── tests/          # unittest: replays bridge-protocol samples
-│   │   └── scripts/build-plugin.ts # inlines the bridge and page into dist/orca_profile_comparer.py
+│   │   └── scripts/build-plugin.ts # inlines the bridge and page into dist/orca_preset_comparer.py
 │   └── playground/             # Vite app in a plain browser: host-memory + core's fixtures
 │
 ├── tools/
@@ -286,7 +286,7 @@ pnpm lint               # ESLint + dependency-cruiser
 pnpm typecheck          # tsc --noEmit in every package
 pnpm format             # Prettier
 pnpm build:desktop      # Tauri release build
-pnpm build:plugin       # single-file plugin: apps/orca-plugin/dist/orca_profile_comparer.py
+pnpm build:plugin       # single-file plugin: apps/orca-plugin/dist/orca_preset_comparer.py
 pnpm extract-settings   # regenerate the setting catalog from OrcaSlicer on GitHub (--ref <branch|tag|commit>, default main; --orca <path> for a local clone; --check compares instead of writing; --verbose lists skipped defaults)
 pnpm sync-fixtures      # refresh system-profile fixtures from ../OrcaSlicer (or --orca <path>)
 ```

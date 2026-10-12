@@ -1,5 +1,5 @@
 {
-  "name": "orca-slicer-profile-comparer",
+  "name": "orca-slicer-preset-comparer",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.9.1",

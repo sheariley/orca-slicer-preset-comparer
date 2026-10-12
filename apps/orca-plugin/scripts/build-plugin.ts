@@ -1,5 +1,5 @@
 // Assembles the single-file OrcaSlicer plugin: comparer_plugin.py with comparer_bridge.py and
-// the built page (dist/web/index.html) inlined. Output: dist/orca_profile_comparer.py
+// the built page (dist/web/index.html) inlined. Output: dist/orca_preset_comparer.py
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -22,7 +22,7 @@ const bridgeBody = bridge.replace(/^"""[\s\S]*?"""\n/, ''); // keeps the bridge'
 let output = replaceRegion(plugin, 'bridge', `# Inlined from comparer_bridge.py\n${bridgeBody}\n`);
 output = replaceRegion(output, 'page', `PAGE_HTML = ${JSON.stringify(page)}\n`);
 
-const target = path.join(appDir, 'dist', 'orca_profile_comparer.py');
+const target = path.join(appDir, 'dist', 'orca_preset_comparer.py');
 await mkdir(path.dirname(target), { recursive: true });
 await writeFile(target, output);
 console.log(`Wrote ${path.relative(appDir, target)} (${Math.round(output.length / 1024)} KB)`);

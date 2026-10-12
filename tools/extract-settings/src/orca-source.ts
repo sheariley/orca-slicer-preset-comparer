@@ -26,7 +26,7 @@ export async function githubSource(
 ): Promise<OrcaSource> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github.sha',
-    'User-Agent': 'orca-slicer-profile-comparer',
+    'User-Agent': 'orca-slicer-preset-comparer',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
   const response = await fetchImpl(
@@ -45,7 +45,7 @@ export async function githubSource(
     async read(file) {
       const url = `https://raw.githubusercontent.com/${ORCA_REPOSITORY}/${commit}/${file}`;
       const fileResponse = await fetchImpl(url, {
-        headers: { 'User-Agent': 'orca-slicer-profile-comparer' },
+        headers: { 'User-Agent': 'orca-slicer-preset-comparer' },
       });
       if (!fileResponse.ok) {
         throw new Error(
