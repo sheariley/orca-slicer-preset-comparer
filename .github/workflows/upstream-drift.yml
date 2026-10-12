@@ -1,0 +1,35 @@
+name: OrcaSlicer drift
+
+# Checks weekly whether OrcaSlicer's main branch changed anything the setting catalog is built
+# from (settings, labels, defaults, tab sections, legacy keys, handle_legacy). It fails, with a
+# summary of what changed, until the catalog is regenerated (`pnpm extract-settings`) and
+# reviewed. The regular CI never reaches the network for this.
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays, 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: OrcaSlicer branch, tag, or commit to compare with
+        default: main
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Setting catalog vs OrcaSlicer
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm extract-settings --check --ref "$REF"
+        env:
+          REF: ${{ inputs.ref || 'main' }}
+          # Raises GitHub's API rate limit for resolving the ref.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

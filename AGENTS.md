@@ -157,6 +157,7 @@ orca-slicer-profile-comparer/
 ├── vitest.config.ts            # test projects: "node" (*.test.ts) and "dom" (*.test.tsx, jsdom)
 ├── scripts/run-python.mjs      # runs the right Python interpreter name on each OS
 ├── .github/workflows/ci.yml    # checks on Windows, macOS, and Linux + desktop build
+├── .github/workflows/upstream-drift.yml # weekly: is the setting catalog still in step with OrcaSlicer's main?
 │
 ├── packages/
 │   ├── core/                   # pure domain logic: no I/O, DOM, React, or host code
@@ -215,7 +216,7 @@ orca-slicer-profile-comparer/
 │   └── playground/             # Vite app in a plain browser: host-memory + core's fixtures
 │
 ├── tools/
-│   ├── extract-settings/       # PrintConfig.cpp + Preset.cpp + Tab.cpp → labels, defaults, enum labels, tab sections, type and per-variant key lists, legacy keys
+│   ├── extract-settings/       # OrcaSlicer's PrintConfig.cpp + Preset.cpp + Tab.cpp (from GitHub, or a clone) → labels, defaults, enum labels, tab sections, type and per-variant key lists, legacy keys
 │   └── sync-fixtures/          # copies profiles listed in fixtures.json into core's fixtures
 │
 └── docs/
@@ -286,7 +287,7 @@ pnpm typecheck          # tsc --noEmit in every package
 pnpm format             # Prettier
 pnpm build:desktop      # Tauri release build
 pnpm build:plugin       # single-file plugin: apps/orca-plugin/dist/orca_profile_comparer.py
-pnpm extract-settings   # regenerate the setting catalog from ../OrcaSlicer (or --orca <path>; --verbose lists skipped defaults)
+pnpm extract-settings   # regenerate the setting catalog from OrcaSlicer on GitHub (--ref <branch|tag|commit>, default main; --orca <path> for a local clone; --check compares instead of writing; --verbose lists skipped defaults)
 pnpm sync-fixtures      # refresh system-profile fixtures from ../OrcaSlicer (or --orca <path>)
 ```
 
@@ -366,6 +367,7 @@ Paths are relative to the OrcaSlicer repo root.
   - Obsolete keys and plain renames are data, extracted into the catalog (`SettingCatalog.legacyKeys()`).
   - The value rules are code, ported by hand to core (`migrateLegacyValue` in `core/src/resolve/legacy-values.ts`). OrcaSlicer runs them on the value as text: a plain string as is, an array as its elements joined with commas (string lists quoted and joined with semicolons, so only rules that edit each element reach them).
   - **Keep the port in step:** the extractor records a fingerprint of `handle_legacy` (`legacy.sourceHash` in the catalog), and a setting-catalog test fails when it differs from `LEGACY_VALUE_RULES_SOURCE_HASH`. Then review OrcaSlicer's change, update the rules, and the hash.
+  - **Upstream drift:** the "OrcaSlicer drift" workflow (`.github/workflows/upstream-drift.yml`, weekly and on demand) runs `pnpm extract-settings --check` against OrcaSlicer's `main` on GitHub and fails with a summary of what changed (settings, owned keys, legacy keys, `handle_legacy`). Regenerating the catalog and reviewing the change is what clears it; the regular CI stays offline.
   - Copies write the current key and remove the old one, for value-rule renames too (`planTransfer`).
 - **Unknown keys:** OrcaSlicer ignores keys it doesn't define, and Bambu's bundled profiles carry dozens of them (Bambu Studio leftovers such as `counter_coef_1`). The diff view hides keys the catalog doesn't know behind a "Hide unused" toggle (on by default). The catalog must therefore cover every real setting; see `tools/extract-settings` for the definition forms it understands.
 - **`include` templates (implemented):** about 1,500 of Bambu's bundled filament profiles also list `include`, an array of template preset names (or one bare name). `resolveChain` follows OrcaSlicer's `PresetBundle::resolve_vendor_preset`. For each preset in the chain, root first:

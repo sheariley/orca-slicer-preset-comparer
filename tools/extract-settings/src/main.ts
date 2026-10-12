@@ -1,13 +1,17 @@
-// Generates packages/setting-catalog/data/settings.json from a local OrcaSlicer clone: each
+// Generates packages/setting-catalog/data/settings.json from OrcaSlicer's sources: each
 // setting's label, group, tooltip, unit, built-in default, enum labels, and where OrcaSlicer's
 // settings tabs show it, plus which settings belong to filament and process presets.
 //
-// Usage: pnpm extract-settings [--orca <path to OrcaSlicer clone>] [--verbose]
-// The clone defaults to ../OrcaSlicer next to this repo, or the ORCASLICER_DIR env variable.
-import { execFileSync } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+// Usage: pnpm extract-settings [--ref <branch, tag, or commit>] [--orca <path>] [--check] [--verbose]
+//   By default it reads OrcaSlicer on GitHub at `main` (--ref picks another). --orca <path> (or
+//   the ORCASLICER_DIR env variable) reads a local clone instead.
+//   --check writes nothing: it compares the extraction with the committed catalog, prints what
+//   changed (also to $GITHUB_STEP_SUMMARY in CI), and exits with 1 if anything did.
+import { appendFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
+import { describeDrift, type CatalogShape } from './drift.ts';
+import { githubSource, localSource, ORCA_REPOSITORY } from './orca-source.ts';
 import {
   parseConstants,
   parseEnumKeys,
@@ -20,18 +24,22 @@ import { parseTabSections } from './parse-tab.ts';
 
 const repoRoot = path.resolve(import.meta.dirname, '../../..');
 const { values } = parseArgs({
-  options: { orca: { type: 'string' }, verbose: { type: 'boolean', default: false } },
+  options: {
+    ref: { type: 'string', default: 'main' },
+    orca: { type: 'string' },
+    check: { type: 'boolean', default: false },
+    verbose: { type: 'boolean', default: false },
+  },
 });
-const orcaDir = path.resolve(
-  values.orca ?? process.env['ORCASLICER_DIR'] ?? path.join(repoRoot, '..', 'OrcaSlicer'),
-);
-const libslic3r = (file: string) => readFile(path.join(orcaDir, 'src', 'libslic3r', file), 'utf8');
+const localDir = values.orca ?? process.env['ORCASLICER_DIR'];
+const orca = localDir ? localSource(path.resolve(localDir)) : await githubSource(values.ref);
+console.log(`Reading ${orca.description}`);
 
 const [printConfig, constants, preset, tab] = await Promise.all([
-  libslic3r('PrintConfig.cpp'),
-  libslic3r('PrintConfigConstants.hpp'),
-  libslic3r('Preset.cpp'),
-  readFile(path.join(orcaDir, 'src', 'slic3r', 'GUI', 'Tab.cpp'), 'utf8'),
+  orca.read('src/libslic3r/PrintConfig.cpp'),
+  orca.read('src/libslic3r/PrintConfigConstants.hpp'),
+  orca.read('src/libslic3r/Preset.cpp'),
+  orca.read('src/slic3r/GUI/Tab.cpp'),
 ]);
 
 const { settings, skippedDefaults } = parsePrintConfig(printConfig, {
@@ -51,7 +59,7 @@ for (const type of ['filament', 'process'] as const) {
 }
 
 const output = {
-  source: { repository: 'OrcaSlicer/OrcaSlicer', commit: gitCommit(orcaDir) },
+  source: { repository: ORCA_REPOSITORY, commit: orca.commit },
   presetTypes,
   variantKeys,
   legacy,
@@ -59,6 +67,18 @@ const output = {
 };
 
 const target = path.join(repoRoot, 'packages', 'setting-catalog', 'data', 'settings.json');
+if (values.check) {
+  const committed = JSON.parse(await readFile(target, 'utf8')) as CatalogShape;
+  const drift = describeDrift(committed, output);
+  const heading = drift.length
+    ? `The setting catalog is out of date with ${orca.description}. Run \`pnpm extract-settings\` and review:`
+    : `The setting catalog is up to date with ${orca.description}.`;
+  const report = [heading, ...drift].join('\n');
+  console.log(report);
+  const summary = process.env['GITHUB_STEP_SUMMARY'];
+  if (summary) await appendFile(summary, `${report}\n`);
+  process.exit(drift.length ? 1 : 0);
+}
 await mkdir(path.dirname(target), { recursive: true });
 await writeFile(target, `${JSON.stringify(output, null, 2)}\n`);
 
@@ -85,12 +105,4 @@ console.log(
 );
 for (const { key, reason } of values.verbose ? skippedDefaults : []) {
   console.log(`  skipped ${key}: ${reason}`);
-}
-
-function gitCommit(dir: string): string | null {
-  try {
-    return execFileSync('git', ['-C', dir, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
-  } catch {
-    return null;
-  }
 }
