@@ -20,3 +20,6 @@ __pycache__/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# AI temp dir
+.agent-temp/
