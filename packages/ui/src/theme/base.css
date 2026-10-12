@@ -111,8 +111,11 @@ body {
   border-bottom: 2px solid var(--c-accent);
 }
 
-/* The read-only badge sits at the far end. */
-.comparer-header > .info-tip-anchor {
+/* The read-only badge and the settings button sit at the far end. */
+.header-end {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   margin-left: auto;
 }
 
@@ -859,6 +862,34 @@ button.sort-button:hover {
 .copy-targets summary:focus-visible {
   outline: 2px solid var(--c-accent);
   outline-offset: 2px;
+}
+
+/* Settings */
+.settings-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+
+.data-folder-path {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.data-folder-path code {
+  padding: 4px 8px;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  background: var(--c-surface);
+  overflow-wrap: anywhere;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 /* Naming a new user preset (save dialog) */

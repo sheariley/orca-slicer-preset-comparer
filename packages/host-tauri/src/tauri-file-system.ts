@@ -9,6 +9,7 @@ import {
   rename,
   writeTextFile,
 } from '@tauri-apps/plugin-fs';
+import { open } from '@tauri-apps/plugin-dialog';
 import { ComparerError } from '@comparer/core';
 import type { HostFileSystem, PresetLock } from './file-system.ts';
 
@@ -74,4 +75,23 @@ export function defaultBackupDir(): Promise<string> {
 /** Where the app keeps its preferences (see fileSettingsStore): its own data folder. */
 export function defaultSettingsPath(): Promise<string> {
   return appDataDir().then((dir) => join(dir, 'settings.json'));
+}
+
+/**
+ * Asks the app to use a data folder the user chose (the `use_orca_data_dir` command in
+ * src-tauri/src/lib.rs): it checks the folder and grants access to it for this run.
+ */
+export async function allowOrcaDataDir(path: string): Promise<string> {
+  return invoke<string>('use_orca_data_dir', { path });
+}
+
+/** The system's folder picker (Tauri's dialog plugin), starting in `startIn`. */
+export async function pickFolder(startIn: string): Promise<string | undefined> {
+  const picked = await open({
+    directory: true,
+    multiple: false,
+    defaultPath: startIn,
+    title: "Choose OrcaSlicer's data folder",
+  });
+  return typeof picked === 'string' ? picked : undefined;
 }

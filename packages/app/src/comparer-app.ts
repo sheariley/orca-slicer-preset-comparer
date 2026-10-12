@@ -25,6 +25,7 @@ import {
   type PinOverrides,
   type ProfileEdits,
   type CloseGuard,
+  type DataFolder,
   type SettingsStore,
   type TransferPlan,
 } from '@comparer/core';
@@ -51,6 +52,8 @@ export interface ComparerDependencies {
   readonly catalog: SettingCatalog;
   /** The host's window close hook, where it has one. */
   readonly closeGuard?: CloseGuard;
+  /** Lets the user choose OrcaSlicer's data folder, where the host can. */
+  readonly dataFolder?: DataFolder;
   /** Where the host keeps the comparer's preferences. Without one, they last the session. */
   readonly settings?: SettingsStore;
 }
@@ -129,6 +132,8 @@ export interface ComparerApp {
   readonly capabilities: HostCapabilities;
   /** Set when the host can keep its window from closing (to ask about unsaved changes). */
   readonly closeGuard: CloseGuard | undefined;
+  /** Set when the host lets the user choose OrcaSlicer's data folder. */
+  readonly dataFolder: DataFolder | undefined;
   /** The user's preferences (layout, filters, ...). */
   readonly preferences: Preferences;
   listPresets(query?: PresetQuery): Promise<readonly PresetRef[]>;
@@ -178,6 +183,7 @@ export function createComparerApp({
   repository,
   catalog,
   closeGuard,
+  dataFolder,
   settings,
 }: ComparerDependencies): ComparerApp {
   const resolveOptions = (type: ProfileType): ResolveOptions => ({
@@ -254,6 +260,7 @@ export function createComparerApp({
   return {
     capabilities: repository.capabilities,
     closeGuard,
+    dataFolder,
     preferences: createPreferences(settings),
     listPresets: (query) => repository.listPresets(query),
     loadResolved: resolve,

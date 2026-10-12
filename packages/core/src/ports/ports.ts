@@ -142,6 +142,26 @@ export interface CloseGuard {
 }
 
 /**
+ * Where the host reads OrcaSlicer's data folder from, for hosts that let the user choose it (the
+ * desktop app: portable installs, a second OrcaSlicer build). Hosts that don't provide none.
+ */
+export interface DataFolder {
+  /** The folder in use. */
+  readonly path: string;
+  /** Whether it's the one the host finds by itself (e.g. %APPDATA%\OrcaSlicer). */
+  readonly isDefault: boolean;
+  /** Why a chosen folder couldn't be used at startup (the default is in use instead). */
+  readonly problem?: string;
+  /** Asks the user for a folder (the host's folder picker). Undefined when they cancel. */
+  choose(): Promise<string | undefined>;
+  /**
+   * Uses `path` from now on (null: the default) and restarts the comparer, which drops
+   * everything unsaved. Rejects with the reason when the folder isn't OrcaSlicer's data folder.
+   */
+  use(path: string | null): Promise<void>;
+}
+
+/**
  * The comparer's own preferences (layout, filters, ...), kept by the host: a local file on the
  * desktop, the plugin config inside OrcaSlicer. Values must survive a JSON round trip.
  */

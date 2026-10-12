@@ -12,6 +12,7 @@
   "dependencies": {
     "@comparer/core": "workspace:*",
     "@tauri-apps/api": "catalog:",
+    "@tauri-apps/plugin-dialog": "catalog:",
     "@tauri-apps/plugin-fs": "catalog:"
   },
   "devDependencies": {

@@ -2,11 +2,12 @@ import type { PresetRef, ProfileType } from '@comparer/core';
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from './components/Dialog.tsx';
 import { ErrorMessage } from './components/ErrorMessage.tsx';
-import { CloseIcon, IconButton } from './components/IconButton.tsx';
+import { CloseIcon, GearIcon, IconButton } from './components/IconButton.tsx';
 import { InfoTip } from './components/InfoTip.tsx';
 import { useTooltip } from './components/Tooltip.tsx';
 import { ComparisonEditor } from './features/editing/ComparisonEditor.tsx';
 import { PresetPickerDialog } from './features/preset-picker/PresetPickerDialog.tsx';
+import { SettingsDialog } from './features/settings/SettingsDialog.tsx';
 import { useAsync } from './hooks/useAsync.ts';
 import { useComparerApp } from './hooks/useComparerApp.ts';
 import { usePreference } from './hooks/usePreference.ts';
@@ -40,6 +41,7 @@ export function ComparerScreen() {
   const [targets, setTargets] = useState<readonly PresetRef[]>([]);
   // Which picker dialog is open.
   const [picking, setPicking] = useState<'base' | 'targets' | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   // The presets with unsaved changes (ids), as the editor reports them.
   const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(new Set());
@@ -214,14 +216,24 @@ export function ComparerScreen() {
           canClear={targets.length > 0}
           onClear={clearTargets}
         />
-        {!app.capabilities.canSave && (
-          <InfoTip
-            subject="read-only mode"
-            content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
-          >
-            <span className="badge">Read-only</span>
-          </InfoTip>
-        )}
+        <div className="header-end">
+          {!app.capabilities.canSave && (
+            <InfoTip
+              subject="read-only mode"
+              content="Saving isn't available here yet, so copying settings is turned off. You can still compare presets."
+            >
+              <span className="badge">Read-only</span>
+            </InfoTip>
+          )}
+          {app.dataFolder && (
+            <IconButton
+              label="Settings"
+              icon={<GearIcon />}
+              aria-haspopup="dialog"
+              onClick={() => setSettingsOpen(true)}
+            />
+          )}
+        </div>
       </header>
       {presets.status === 'failed' && <ErrorMessage error={presets.error} />}
 
@@ -268,6 +280,13 @@ export function ComparerScreen() {
         />
       )}
 
+      {settingsOpen && app.dataFolder && (
+        <SettingsDialog
+          dataFolder={app.dataFolder}
+          dirty={dirty}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
       {pendingChange && (
         <Dialog
           title={pendingChange.title}

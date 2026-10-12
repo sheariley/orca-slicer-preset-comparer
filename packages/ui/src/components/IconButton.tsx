@@ -47,3 +47,19 @@ export function CloseIcon() {
     </svg>
   );
 }
+
+/** A gear, for settings. */
+export function GearIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" focusable="false">
+      <path
+        d="M6.9 1.5h2.2l.35 1.75a5 5 0 0 1 1.3.75l1.7-.57 1.1 1.9-1.35 1.18a5 5 0 0 1 0 1.5l1.35 1.18-1.1 1.9-1.7-.57a5 5 0 0 1-1.3.75L9.1 14.5H6.9l-.35-1.75a5 5 0 0 1-1.3-.75l-1.7.57-1.1-1.9 1.35-1.18a5 5 0 0 1 0-1.5L2.45 6.8l1.1-1.9 1.7.57a5 5 0 0 1 1.3-.75z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinejoin="round"
+      />
+      <circle cx="8" cy="8" r="2" fill="none" stroke="currentColor" strokeWidth="1.25" />
+    </svg>
+  );
+}

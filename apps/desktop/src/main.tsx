@@ -1,11 +1,15 @@
-// Composition root for the desktop app: the Tauri host reading OrcaSlicer's data folder.
+// Composition root for the desktop app: the Tauri host reading OrcaSlicer's data folder (the
+// default one, or the one chosen in Settings).
 import { createComparerApp } from '@comparer/app';
 import {
+  allowOrcaDataDir,
   createDesktopHost,
   defaultBackupDir,
   defaultOrcaDataDir,
   defaultSettingsPath,
+  desktopDataFolder,
   fileSettingsStore,
+  pickFolder,
   tauriCloseGuard,
   tauriFileSystem,
   tauriPresetLock,
@@ -19,16 +23,26 @@ import { createRoot } from 'react-dom/client';
 const root = createRoot(document.getElementById('root')!);
 
 try {
+  const settings = fileSettingsStore(tauriFileSystem(), await defaultSettingsPath());
+  // OrcaSlicer's data folder: the default, or the one the user chose in Settings.
+  const dataFolder = await desktopDataFolder({
+    settings,
+    defaultDir: await defaultOrcaDataDir(),
+    allow: allowOrcaDataDir,
+    pick: pickFolder,
+    restart: () => window.location.reload(),
+  });
   const app = createComparerApp({
     repository: createDesktopHost({
       fs: tauriFileSystem(),
-      dataDir: await defaultOrcaDataDir(),
+      dataDir: dataFolder.path,
       lock: tauriPresetLock(),
       backupDir: await defaultBackupDir(),
     }),
     catalog: createSettingCatalog(),
     closeGuard: tauriCloseGuard(),
-    settings: fileSettingsStore(tauriFileSystem(), await defaultSettingsPath()),
+    dataFolder,
+    settings,
   });
   root.render(
     <StrictMode>

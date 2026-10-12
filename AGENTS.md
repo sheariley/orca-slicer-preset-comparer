@@ -188,7 +188,7 @@ orca-slicer-profile-comparer/
 │   │   └── src/
 │   │       ├── ComparerRoot.tsx    # the whole UI; composition roots render this
 │   │       ├── ComparerScreen.tsx
-│   │       ├── features/       # preset-picker/ (the base and target picker dialog), diff-view/, editing/, save-flow/; (planned) settings/
+│   │       ├── features/       # preset-picker/ (the base and target picker dialog), diff-view/, editing/, save-flow/, settings/ (the Settings dialog: OrcaSlicer's data folder)
 │   │       ├── components/     # shared building blocks: InfoTip, IconButton, Tooltip, PinToggle, Dialog, ErrorMessage
 │   │       ├── hooks/          # useComparerApp, useAsync, usePreference
 │   │       ├── providers/      # AppProvider + its context
@@ -305,7 +305,7 @@ Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, p
 ## Host adapters as built
 
 - **Desktop (`host-tauri`):**
-  - Reads OrcaSlicer's data folder (`configDir()/OrcaSlicer`):
+  - Reads OrcaSlicer's data folder: `configDir()/OrcaSlicer` by default, or one the user chooses in Settings (see "Choosing the data folder" below):
     - `system/<Vendor>/<type>/*.json` for system presets, including subfolders: vendors may group them (OrcaFilamentLibrary keeps its parents in `filament/base/` and most presets in a folder per brand). Only the vendors the user installed are there.
     - `user/<user_id>/<type>/*.json` for user presets.
     - `user/<user_id>/<type>/base/*.json` for user root presets (`inherits: ""`, every setting spelled out).
@@ -315,6 +315,9 @@ Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, p
   - A preset can name a parent that no longer exists. That's a real state of user data, so report it as `not-found`; it's not a bug.
   - Every file call goes through the `HostFileSystem` interface, so the contract tests run against an in-memory file system. The production implementation wraps Tauri's fs plugin.
   - File access is limited to `$CONFIG/OrcaSlicer` by `src-tauri/capabilities/default.json`. Widen that scope deliberately, never with a blanket permission.
+  - **Choosing the data folder** (for portable installs or a second OrcaSlicer build): a gear button in the header opens Settings (`SettingsDialog`, shown when the host provides core's `DataFolder` port, `ComparerApp.dataFolder`). It shows the folder in use, "Choose folder" (the system's folder picker, Tauri's dialog plugin), and "Use default". `desktopDataFolder` (host-tauri) keeps the choice in the preferences (`desktop.orcaDataDir`) and restarts the comparer to switch.
+    - The Rust command `use_orca_data_dir` checks a folder looks like OrcaSlicer's (a `system` or `user` folder, or `OrcaSlicer.conf`), adds it to the fs plugin's scope for the run (at every startup, from the preference), and points the preset lock at its `user.lock`. A remembered folder that can't be used falls back to the default, and Settings says why.
+    - **The trade-off (chosen deliberately):** Tauri's runtime scope isn't per operation, so a chosen folder gets every file operation the capability grants, anywhere in it. There, only the TypeScript host keeps `system/` read-only (it never writes outside `user/`); in the default folder, the capability enforces it too.
   - Returns each file's exact text, and reports CRLF as the platform newline when the path separator is `\` (Windows), LF otherwise.
   - **Saving** (`saveDocument`) writes user presets only; system presets are refused. For each file:
     1. It takes OrcaSlicer's preset lock (see below).
