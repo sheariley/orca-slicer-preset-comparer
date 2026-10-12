@@ -1,8 +1,8 @@
-# OrcaSlicer Profile Comparer
+# OrcaSlicer Preset Comparer
 
-Compare OrcaSlicer filament and process profiles side by side, see exactly which settings differ, and (soon) copy settings between profiles. Runs as a desktop app on Windows, macOS, and Linux, and later as an OrcaSlicer plugin.
+Compare an OrcaSlicer filament or process preset with any number of others, see exactly which settings differ, copy settings from one preset to the rest, and save them back to OrcaSlicer's folder. Runs as a desktop app on Windows, macOS, and Linux, and later as an OrcaSlicer plugin.
 
-**Status:** early development. Comparing works (read-only); copying and saving don't yet.
+**Status:** early development. Comparing, copying, and saving work in the desktop app; the plugin is read-only for now.
 
 ## Prerequisites
 

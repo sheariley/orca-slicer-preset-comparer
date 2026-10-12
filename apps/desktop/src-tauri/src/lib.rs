@@ -79,5 +79,5 @@ pub fn run() {
         .manage(PresetLocks::default())
         .invoke_handler(tauri::generate_handler![lock_user_presets, unlock_user_presets])
         .run(tauri::generate_context!())
-        .expect("error while running the profile comparer");
+        .expect("error while running the preset comparer");
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
-  "productName": "OrcaSlicer Profile Comparer",
+  "productName": "OrcaSlicer Preset Comparer",
   "version": "0.1.0",
   "identifier": "io.github.sheariley.orca-profile-comparer",
   "build": {
@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "OrcaSlicer Profile Comparer",
+        "title": "OrcaSlicer Preset Comparer",
         "width": 1200,
         "height": 800,
         "minWidth": 640,

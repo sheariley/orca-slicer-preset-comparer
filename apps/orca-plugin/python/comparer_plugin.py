@@ -2,12 +2,12 @@
 # requires-python = ">=3.12"
 #
 # [tool.orcaslicer.plugin]
-# name = "Profile Comparer"
+# name = "Preset Comparer"
 # description = "Compare filament and process presets side by side."
 # author = "sheariley"
 # version = "0.1.0"
 # ///
-"""OrcaSlicer glue for the Profile Comparer: a main-window tab (Pages capability).
+"""OrcaSlicer glue for the Preset Comparer: a main-window tab (Pages capability).
 
 Every `orca.*` reference lives in this file. The protocol handling is in comparer_bridge.py;
 `pnpm build:plugin` inlines it and the built page into one plugin file.
@@ -93,7 +93,7 @@ _HOST = OrcaPresetHost()
 
 class ComparerPage(orca.pages.PagesPluginCapabilityBase):
     def get_name(self):
-        return "Profile Comparer"
+        return "Preset Comparer"
 
     def get_ui(self):
         return PAGE_HTML
@@ -103,6 +103,6 @@ class ComparerPage(orca.pages.PagesPluginCapabilityBase):
 
 
 @orca.plugin
-class ProfileComparerPlugin(orca.base):
+class PresetComparerPlugin(orca.base):
     def register_capabilities(self):
         orca.register_capability(ComparerPage)

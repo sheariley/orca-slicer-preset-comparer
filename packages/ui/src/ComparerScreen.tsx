@@ -163,7 +163,7 @@ export function ComparerScreen() {
     <div className="comparer">
       {/* One row: the title, the type tabs, and the pickers, over an accent rule. */}
       <header className="comparer-header">
-        <h1>Profile Comparer</h1>
+        <h1>Preset Comparer</h1>
         <div className="type-tabs" role="tablist" aria-label="Profile type">
           {TYPES.map(({ type: value, label }) => (
             <button

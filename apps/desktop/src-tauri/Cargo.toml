@@ -1,7 +1,7 @@
 [package]
 name = "comparer-desktop"
 version = "0.1.0"
-description = "OrcaSlicer Profile Comparer"
+description = "OrcaSlicer Preset Comparer"
 edition = "2021"
 
 [lib]
