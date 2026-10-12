@@ -36,6 +36,14 @@ describe('migrateLegacyValue', () => {
     });
   });
 
+  it('renames the old IDEX/IQEX printer keys by their prefix', () => {
+    expect(migrateLegacyValue('ixex_parallel_mode', '1')).toEqual({
+      key: 'imex_parallel_mode',
+      value: '1',
+    });
+    expect(migrateLegacyValue('ixex_carriage_width_x', '30')?.key).toBe('imex_nozzle_clearance_x');
+  });
+
   it('renames by value, and drops what OrcaSlicer can no longer read', () => {
     expect(migrateLegacyValue('wall_infill_order', 'infill/outer wall/inner wall')).toEqual({
       key: 'wall_sequence',

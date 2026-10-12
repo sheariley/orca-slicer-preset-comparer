@@ -12,7 +12,7 @@ import type { RawValue } from '../model/profile.ts';
  * hash.
  */
 export const LEGACY_VALUE_RULES_SOURCE_HASH =
-  '0abc1b0ef076435d86460431c14499d1aa3cf0fefa25e56e12e11d3cab441772';
+  'b44eb95de269517c012cd61b3f2945287ff997b4e4ff6f015c5d0055a8504a40';
 
 /** What a legacy rule does to one setting: its current key (null: dropped) and value. */
 export interface LegacyMigration {
@@ -120,6 +120,18 @@ export function migrateLegacyValue(key: string, raw: RawValue): LegacyMigration 
   const each = (edit: (element: string) => string): RawValue =>
     isArray ? elements.map(edit) : edit(raw as string);
 
+  // IDEX/IQEX printer keys from before the feature was named IMEX (ixex_* → imex_*), with the
+  // two clearance keys renamed again. A rename by prefix, so the catalog can't list it.
+  if (key.startsWith('ixex_')) {
+    const imex = `imex_${key.slice('ixex_'.length)}`;
+    const current =
+      imex === 'imex_carriage_width_x'
+        ? 'imex_nozzle_clearance_x'
+        : imex === 'imex_carriage_width_y'
+          ? 'imex_nozzle_clearance_y'
+          : imex;
+    return { key: current, value: raw };
+  }
   // Keys renamed whatever their value, with the old default "1" (first filament) now "0"
   // (inherit the object's filament).
   const filamentId = LEGACY_VALUE_RENAMES.get(key);

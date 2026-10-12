@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "OrcaSlicer/OrcaSlicer",
-    "commit": "b29c3b36ece50495f4ab1687e29beb346c23ab84"
+    "commit": "f4bde2da0a41d4deb1f312b3c2bd11e85270b6b2"
   },
   "presetTypes": {
     "process": [
@@ -38,6 +38,9 @@
       "is_infill_first",
       "sparse_infill_density",
       "fill_multiline",
+      "tpms_adaptive",
+      "tpms_interior_density",
+      "tpms_adaptive_gradient",
       "gyroid_optimized",
       "sparse_infill_pattern",
       "sparse_infill_smooth_factor",
@@ -67,6 +70,7 @@
       "infill_lock_depth",
       "skin_infill_depth",
       "skin_infill_density",
+      "infill_complete_top",
       "align_infill_direction_to_model",
       "extra_solid_infills",
       "center_of_surface_pattern",
@@ -132,6 +136,8 @@
       "single_loop_draft_shield",
       "draft_shield",
       "brim_width",
+      "leading_brim_length",
+      "extra_brim_width",
       "brim_object_gap",
       "brim_flow_ratio",
       "brim_use_efc_outline",
@@ -220,6 +226,8 @@
       "prime_volume",
       "prime_tower_infill_gap",
       "prime_tower_flat_ironing",
+      "belt_purge_tower_width",
+      "belt_purge_tower_object",
       "enable_tower_interface_features",
       "enable_tower_interface_cooldown_during_tower",
       "wipe_tower_no_sparse_layers",
@@ -380,6 +388,8 @@
       "interlocking_boundary_avoidance",
       "interlocking_beam_width",
       "calib_flowrate_topinfill_special_order",
+      "imex_parallel_mode",
+      "imex_head_filament_map",
       "zaa_enabled",
       "zaa_minimize_perimeter_height",
       "zaa_dont_alternate_fill_direction",
@@ -700,7 +710,19 @@
       "overhang_totally_speed",
       "silent_mode",
       "overhang_speed_classic",
-      "anisotropic_surfaces"
+      "anisotropic_surfaces",
+      "belt_slice_rotation_global",
+      "preslice_remap_x",
+      "preslice_remap_y",
+      "preslice_remap_z",
+      "preslice_remap_global",
+      "belt_support_z_offset_mode",
+      "first_layer_plane",
+      "first_layer_plane_offset",
+      "belt_preslice_global",
+      "gcode_back_transform",
+      "belt_support_floor_mode",
+      "first_layer_plane_thickness"
     ],
     "renamed": {
       "enable_wipe_tower": "enable_prime_tower",
@@ -730,9 +752,10 @@
       "prime_tower_rib_width": "wipe_tower_rib_width",
       "prime_tower_fillet_wall": "wipe_tower_fillet_wall",
       "extruder_clearance_max_radius": "extruder_clearance_radius",
-      "machine_switch_extruder_time": "machine_tool_change_time"
+      "machine_switch_extruder_time": "machine_tool_change_time",
+      "is_ixex": "is_imex"
     },
-    "sourceHash": "0abc1b0ef076435d86460431c14499d1aa3cf0fefa25e56e12e11d3cab441772"
+    "sourceHash": "b44eb95de269517c012cd61b3f2945287ff997b4e4ff6f015c5d0055a8504a40"
   },
   "settings": {
     "absolute_correction": {
@@ -1038,6 +1061,71 @@
       "label": "Before layer change G-code",
       "tooltip": "This G-code is inserted at every layer change before the Z lift.",
       "default": ""
+    },
+    "belt_frame_tilt_angle": {
+      "label": "Machine-frame tilt angle",
+      "category": "Printable space",
+      "tooltip": "Tilt angle (degrees) used to derive the machine-frame shear (cot) and scale (1/|sin|) applied to G-code. Only used when 'Decouple machine-frame tilt' is enabled; otherwise the belt tilt angle is used.",
+      "unit": "°",
+      "default": "45"
+    },
+    "belt_frame_tilt_decouple": {
+      "label": "Decouple machine-frame tilt",
+      "category": "Printable space",
+      "tooltip": "Expert override: set the machine-frame (g-code shear/scale) tilt angle independently of the pre-slice rotation angle. When disabled, the machine-frame transform is derived from the belt tilt angle, so a single angle drives both stages. Enable only to compensate for a machine whose physical gantry tilt differs from the slicing rotation.",
+      "default": "0"
+    },
+    "belt_printer": {
+      "label": "Enable belt printing",
+      "category": "Printable space",
+      "tooltip": "Enable belt printer mode. Belt printers use a conveyor belt as the build surface, tilted at an angle (typically 45 degrees). The slicer will rotate the slicing plane and transform G-code coordinates for the tilted build surface.",
+      "default": "0"
+    },
+    "belt_printer_infinite_y": {
+      "label": "Infinite Y axis",
+      "category": "Printable space",
+      "tooltip": "Enable infinite Y axis for belt printers. When enabled, the Y axis build volume limit is effectively removed, allowing objects of any length to be printed along the belt direction.",
+      "default": "1"
+    },
+    "belt_purge_tower_object": {
+      "category": "Flush options",
+      "label": "Belt purge tower object",
+      "tooltip": "Marks the auto-generated belt purge prism. Managed automatically; do not set manually.",
+      "default": "0"
+    },
+    "belt_purge_tower_width": {
+      "label": "Belt purge tower width",
+      "category": "Printable space",
+      "tooltip": "Width (machine X, across the belt) of the purge prism that is automatically generated on belt printers when the belt purge tower is enabled and multiple filaments are used. Filament-change purging is routed into this prism's extrusions instead of a classic wipe tower. Its height is computed automatically from the worst-case purge volume per layer: a wider prism results in a shorter one.",
+      "unit": "mm",
+      "default": "35",
+      "sections": {
+        "process": {
+          "page": "Multimaterial",
+          "group": "Prime tower",
+          "order": 28
+        }
+      }
+    },
+    "belt_slice_rotation": {
+      "label": "Belt tilt axis",
+      "category": "Printable space",
+      "tooltip": "Axis the mesh is rotated about before slicing. This is the belt printer's tilt: an isometric (no distortion) rotation that also drives bed rendering and support gravity tilt, and that the g-code back-transform inverts before the machine-frame shear/scale and remap. X is the typical gantry tilt (belt travels along Y).",
+      "default": "x"
+    },
+    "belt_slice_rotation_angle": {
+      "label": "Belt tilt angle",
+      "category": "Printable space",
+      "tooltip": "Tilt angle of the belt surface, in degrees. Most belt printers use 45°. Positive values rotate counter-clockwise looking down the positive tilt axis; the magnitude is also the physical belt tilt used for bed rendering and support gravity.",
+      "unit": "°",
+      "default": "45"
+    },
+    "belt_support_floor_offset": {
+      "label": "Support Floor Z offset",
+      "category": "Printable space",
+      "tooltip": "Shifts the computed belt floor up or down (mm). Negative values lower the floor, allowing more supports to survive. Use this to diagnose belt floor formula issues.",
+      "unit": "mm",
+      "default": "0"
     },
     "best_object_pos": {
       "label": "Best object position",
@@ -1380,7 +1468,8 @@
         "outer_only",
         "inner_only",
         "outer_and_inner",
-        "no_brim"
+        "no_brim",
+        "leading_edge_only"
       ],
       "enumLabels": [
         "Auto",
@@ -1389,7 +1478,8 @@
         "Outer brim only",
         "Inner brim only",
         "Outer and inner brim",
-        "No-brim"
+        "No-brim",
+        "Leading edge only"
       ],
       "default": "auto_brim",
       "sections": {
@@ -1426,6 +1516,20 @@
           "order": 34
         }
       }
+    },
+    "build_plate_tilt_x": {
+      "label": "Build plate tilt X",
+      "category": "Support",
+      "tooltip": "Tilt angle of the build plate along the X axis. A positive value tilts the plate so the +X side is higher, shifting gravity toward -X and increasing overhangs on the +X side. A negative value tilts the -X side higher. Set to 0 for no X-axis tilt. In belt printer mode, this is automatically synced to the belt angle.",
+      "unit": "°",
+      "default": "0"
+    },
+    "build_plate_tilt_y": {
+      "label": "Build plate tilt Y",
+      "category": "Support",
+      "tooltip": "Tilt angle of the build plate along the Y axis. A positive value tilts the plate so the +Y side is higher, shifting gravity toward -Y and increasing overhangs on the +Y side. A negative value tilts the -Y side higher. Set to 0 for no Y-axis tilt.",
+      "unit": "°",
+      "default": "0"
     },
     "calib_flowrate_topinfill_special_order": {
       "default": "0"
@@ -2079,6 +2183,12 @@
         }
       }
     },
+    "enable_belt_purge_tower": {
+      "label": "Enable belt purge tower",
+      "category": "Multimaterial",
+      "tooltip": "Belt-printer replacement for the wipe/prime tower. When enabled on a belt printer, a purge prism is automatically generated next to the printed parts and filament-change purging is routed into it (the classic wipe tower cannot be used on belt printers because its G-code bypasses the belt transform). Only available on belt printers.",
+      "default": "0"
+    },
     "enable_extra_bridge_layer": {
       "label": "Extra bridge layers (beta)",
       "category": "Quality",
@@ -2363,6 +2473,20 @@
     },
     "exposure_time": {
       "default": "10"
+    },
+    "extra_brim_width": {
+      "label": "Extra brim width",
+      "category": "Support",
+      "tooltip": "Belt printers only. Widens the brim SIDEWAYS, across the belt, without extending it further ahead of or behind the object. Use it when a part needs more grip along its length than Brim width alone gives.\n\nMeasured on the belt surface, and added on top of Brim width: the brim reaches Brim-object gap + Brim width + Extra brim width to either side of the object. To extend the brim ahead of the object instead, use Leading brim length.\n\nSet to 0 to disable.",
+      "unit": "mm",
+      "default": "0",
+      "sections": {
+        "process": {
+          "page": "Others",
+          "group": "Brim",
+          "order": 34
+        }
+      }
     },
     "extra_loading_move": {
       "label": "Extra loading distance",
@@ -4653,6 +4777,98 @@
         }
       }
     },
+    "imex_carriage_margin": {
+      "label": "Safety Margin",
+      "tooltip": "Non-blocking advisory clearance strip (mm) drawn inside the primary zone at each carriage boundary. Parts placed within this strip will still slice; it is a visual reminder to leave extra clearance near the zone edge.",
+      "unit": "mm",
+      "default": "0"
+    },
+    "imex_firmware_managed_zones": {
+      "label": "Firmware-managed zones",
+      "tooltip": "When enabled, the slicer emits g-code with the primary zone's contents centered on bed origin (0,0). The printer firmware is responsible for placing copies/mirrors at each physical zone position. Enable only on printers whose firmware applies its own zone offsets in copy/mirror mode (e.g. RepRapFirmware IDEX duplication mode). Has no effect in Primary mode.",
+      "default": "0"
+    },
+    "imex_gantry_count": {
+      "label": "Gantry Count",
+      "tooltip": "Number of independent Y-axis gantries. 1 for IDEX/single-rail IQEX. 2 for dual-gantry systems (divides bed into rows).",
+      "default": "1"
+    },
+    "imex_head_filament_map": {
+      "label": "IDEX/IQEX head filament map",
+      "tooltip": "Per-plate override mapping physical heads to filament slots (1-based). Empty means use pem-inversion defaults.",
+      "default": ""
+    },
+    "imex_mode_active_tools": {
+      "label": "IDEX/IQEX Mode Active Tools",
+      "tooltip": "Tool role assignments for each mode. Format: \"idx:P,idx:C,idx:M\" where P=Primary, C=Copy, M=Mirror (e.g. \"0:P,1:C,2:M,3:M\"). Managed by the IDEX/IQEX Modes editor in the Printer preset.",
+      "default": []
+    },
+    "imex_mode_gcodes": {
+      "label": "IDEX/IQEX Mode G-codes",
+      "tooltip": "G-code or macro call to inject at print start for each mode.",
+      "default": []
+    },
+    "imex_mode_names": {
+      "label": "IDEX/IQEX Mode Names",
+      "tooltip": "Display names for each user-defined IDEX/IQEX parallel print mode.",
+      "default": []
+    },
+    "imex_nozzle_clearance_x": {
+      "label": "Nozzle Clearance X",
+      "tooltip": "Distance (mm) from the nozzle to the collision-side carriage edge in X. Used to calculate the width of the collision exclusion strip at each X boundary.",
+      "unit": "mm",
+      "default": "30"
+    },
+    "imex_nozzle_clearance_y": {
+      "label": "Nozzle Clearance Y",
+      "tooltip": "Distance (mm) from the nozzle to the collision-side carriage edge in Y. Used to calculate the width of the collision exclusion strip at each Y boundary.",
+      "unit": "mm",
+      "default": "30"
+    },
+    "imex_parallel_mode": {
+      "label": "IDEX/IQEX Print Mode",
+      "tooltip": "Name of the active IDEX/IQEX parallel print mode, or \"primary\" for single-carriage printing. Requires IDEX/IQEX Printer enabled in the Printer preset (Printer → Multimaterial → IDEX/IQEX Configuration).",
+      "default": "primary"
+    },
+    "imex_tool_layout": {
+      "label": "Tool 0 Position",
+      "tooltip": "Physical position on the bed where tool T0 (index 0) is located. Determines how tool indices map to bed zones. For single-gantry setups (IDEX) only left/right matters; for dual-gantry setups (IQEX) all four corners are selectable (front = lower Y / near the operator, rear = higher Y / back of machine).",
+      "enumValues": [
+        "front-left",
+        "front-right",
+        "rear-left",
+        "rear-right"
+      ],
+      "enumLabels": [
+        "Front-left",
+        "Front-right",
+        "Rear-left",
+        "Rear-right"
+      ],
+      "default": "front-left"
+    },
+    "imex_tools_per_gantry": {
+      "label": "Tools per Gantry",
+      "tooltip": "Number of independent toolheads per gantry along X. 2 for IDEX-style.",
+      "default": "2"
+    },
+    "imex_viz_theme": {
+      "label": "Visualization Theme",
+      "tooltip": "Color theme for IDEX/IQEX bed zone visualization. Choose a colorblind-friendly theme if needed.",
+      "enumValues": [
+        "standard",
+        "deuteranopia",
+        "tritanopia",
+        "high_contrast"
+      ],
+      "enumLabels": [
+        "Standard",
+        "Deuteranopia / Protanopia (red-green)",
+        "Tritanopia (blue-yellow)",
+        "High Contrast"
+      ],
+      "default": "standard"
+    },
     "independent_support_layer_height": {
       "label": "Independent support layer height",
       "category": "Support",
@@ -4749,6 +4965,19 @@
           "page": "Strength",
           "group": "Advanced",
           "order": 13
+        }
+      }
+    },
+    "infill_complete_top": {
+      "label": "Fill pattern tops",
+      "category": "Strength",
+      "tooltip": "Choose this option if you want to completely fill in the tops of the infill pattern",
+      "default": "0",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
         }
       }
     },
@@ -5591,6 +5820,11 @@
       "label": "Is extruder used?",
       "tooltip": "Vector of booleans stating whether a given extruder is used in the print."
     },
+    "is_imex": {
+      "label": "IDEX/IQEX Printer",
+      "tooltip": "Enable parallel printing for printers with multiple independent carriages (IDEX, IQEX, and similar).",
+      "default": "0"
+    },
     "is_infill_first": {
       "label": "Print infill first",
       "tooltip": "Order of wall/infill. When the tickbox is unchecked the walls are printed first, which works best in most cases.\n\nPrinting infill first may help with extreme overhangs as the walls have the neighbouring infill to adhere to. However, the infill will slightly push out the printed walls where it is attached to them, resulting in a worse external surface finish. It can also cause the infill to shine through the external surfaces of the part.",
@@ -5653,11 +5887,25 @@
     },
     "layer_num": {
       "label": "Layer number",
-      "tooltip": "Index of the current layer. One-based (i.e. first layer is number 1)."
+      "tooltip": "Index of the current layer. Zero-based (i.e. first layer is number 0), except in extrusion role change G-code, where it is one-based."
     },
     "layer_z": {
       "label": "Layer Z",
       "tooltip": "Height of the current layer above the print bed, measured to the top of the layer."
+    },
+    "leading_brim_length": {
+      "label": "Leading brim length",
+      "category": "Support",
+      "tooltip": "Belt printers only. Extends the brim AHEAD of the object along the belt, on every downhill-facing edge of its contact area - both the object's first contact with the belt and any island that lands later. This apron is laid onto the belt before the object reaches it, so the leading edge has something already stuck down to hold on to.\n\nMeasured on the belt surface, and added on top of Brim width: the brim reaches Brim-object gap + Leading brim length + Brim width ahead of the object. Set Brim-object gap to 0, or the apron will not touch the object it is meant to anchor.\n\nOn a tilted belt each layer lays one strip of the brim, so the thickness of the resulting brim sheet is set by flow rather than by layer height. Use Brim flow ratio to tune it.\n\nSet to 0 to disable.",
+      "unit": "mm",
+      "default": "0",
+      "sections": {
+        "process": {
+          "page": "Others",
+          "group": "Brim",
+          "order": 34
+        }
+      }
     },
     "lightning_overhang_angle": {
       "label": "Lightning overhang angle",
@@ -7863,7 +8111,7 @@
     "separated_infills": {
       "label": "Separated infills",
       "category": "Strength",
-      "tooltip": "Centers the internal infill of each part on itself, as if it were sliced on its own, instead of on the whole assembly. Parts that touch or overlap are treated as one body and share a center; separate parts (or distinct 3D objects) each get their own.\nUseful when an assembly groups several objects that should each keep a consistent, self-centered infill.\nAffects line and grid patterns and rotation-template infills.\nPatterns locked to global coordinates (Gyroid, Honeycomb, TPMS, ...) are unaffected.",
+      "tooltip": "Centers the internal infill of each part on itself, as if it were sliced on its own, instead of on the whole assembly. Parts that touch or overlap are treated as one body and share a center; separate parts (or distinct 3D objects) each get their own.\nUseful when an assembly groups several objects that should each keep a consistent, self-centered infill.\nAdaptive Cubic and Support Cubic always center each part on itself, and Lightning infill is generated for the whole object and is unaffected.",
       "default": "0",
       "sections": {
         "process": {
@@ -9844,6 +10092,76 @@
     "total_wipe_tower_filament": {
       "label": "Wipe tower volume",
       "tooltip": "Total filament volume extruded on the wipe tower."
+    },
+    "tpms_adaptive": {
+      "label": "Adaptive density (experimental)",
+      "category": "Strength",
+      "tooltip": "Grades the Gyroid and TPMS infill inside the object: its cells grow from the surface of the object towards its center. The sparse infill density is used at the surface and the interior density at the center.\nDistance warp, Smooth blend and Stepped shells follow the distance to the nearest surface, including the top and bottom, with the interior density at the point farthest from it:\n - Distance warp: one continuous pattern, stretched and sheared where the distance changes across directions, as in plates and long parts.\n - Smooth blend: the patterns of neighbouring densities blended into each other, with small loops where they meet.\n - Stepped shells: shells of the regular pattern at densities about 1.5 times apart, their lines joined along the shell boundaries.\n - Lobes: follows the 3D shape of the object, including its top and bottom. Every lobe, a part joined to the rest by a narrower neck, is graded towards its own center.\n - Normal Z, Y or X: follows the sections of the object normal to that axis, so the density does not change along it.",
+      "enumValues": [
+        "disabled",
+        "distance_warp",
+        "smooth_blend",
+        "stepped_shells",
+        "lobes",
+        "normal_z",
+        "normal_y",
+        "normal_x"
+      ],
+      "enumLabels": [
+        "Disabled",
+        "Distance warp",
+        "Smooth blend",
+        "Stepped shells",
+        "Lobes",
+        "Normal Z",
+        "Normal Y",
+        "Normal X"
+      ],
+      "default": "disabled",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
+        }
+      }
+    },
+    "tpms_adaptive_gradient": {
+      "label": "Adaptive gradient",
+      "category": "Strength",
+      "tooltip": "How the density changes from the surface to the center of the object.\nLinear: the density changes at a constant rate.\nQuadratic: the density stays close to the sparse infill density near the surface and changes faster towards the center.\nExponential: the density changes quickly just below the surface and levels off towards the center.",
+      "enumValues": [
+        "linear",
+        "quadratic",
+        "exponential"
+      ],
+      "enumLabels": [
+        "Linear",
+        "Quadratic",
+        "Exponential"
+      ],
+      "default": "linear",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
+        }
+      }
+    },
+    "tpms_interior_density": {
+      "label": "Interior density",
+      "category": "Strength",
+      "tooltip": "Density of the adaptive infill at the center of the object.",
+      "unit": "%",
+      "default": "5%",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
+        }
+      }
     },
     "travel_acceleration": {
       "label": "Travel",
