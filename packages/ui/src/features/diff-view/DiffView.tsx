@@ -126,14 +126,17 @@ function SelectAll({
     if (ref.current) ref.current.indeterminate = count > 0 && !all;
   }, [count, all]);
   return (
-    <input
-      ref={ref}
-      type="checkbox"
-      aria-label={label}
-      checked={all}
-      disabled={keys.length === 0}
-      onChange={(event) => editing.onSelect(keys, event.target.checked)}
-    />
+    // A 32 × 32 px hit area around the 16 px checkbox (touch).
+    <label className="hit-area">
+      <input
+        ref={ref}
+        type="checkbox"
+        aria-label={label}
+        checked={all}
+        disabled={keys.length === 0}
+        onChange={(event) => editing.onSelect(keys, event.target.checked)}
+      />
+    </label>
   );
 }
 
@@ -374,12 +377,14 @@ export function DiffView({
                   >
                     {editing && (
                       <td className="select-cell pinned pin-select">
-                        <input
-                          type="checkbox"
-                          aria-label={`Select ${name}`}
-                          checked={editing.selected.has(row.key)}
-                          onChange={(event) => editing.onSelect([row.key], event.target.checked)}
-                        />
+                        <label className="hit-area">
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${name}`}
+                            checked={editing.selected.has(row.key)}
+                            onChange={(event) => editing.onSelect([row.key], event.target.checked)}
+                          />
+                        </label>
                       </td>
                     )}
                     <th scope="row" className="pinned pin-setting">

@@ -222,14 +222,16 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
             <tr>
               <th scope="col" className="select-cell">
                 {multiple ? (
-                  <input
-                    ref={selectAll}
-                    type="checkbox"
-                    aria-label="Choose all shown presets"
-                    checked={shown.length > 0 && shownSelected === shown.length}
-                    disabled={shown.length === 0}
-                    onChange={(event) => toggle(shownIds, event.target.checked)}
-                  />
+                  <label className="hit-area">
+                    <input
+                      ref={selectAll}
+                      type="checkbox"
+                      aria-label="Choose all shown presets"
+                      checked={shown.length > 0 && shownSelected === shown.length}
+                      disabled={shown.length === 0}
+                      onChange={(event) => toggle(shownIds, event.target.checked)}
+                    />
+                  </label>
                 ) : (
                   <span className="visually-hidden">Chosen</span>
                 )}
@@ -262,13 +264,15 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
             {shown.map((preset) => (
               <tr key={preset.id} data-selected={selected.has(preset.id) || undefined}>
                 <td className="select-cell">
-                  <input
-                    type={multiple ? 'checkbox' : 'radio'}
-                    name={multiple ? undefined : radioGroup}
-                    aria-label={`Choose ${preset.name}${whereabouts(preset) ? ` (${whereabouts(preset)})` : ''}`}
-                    checked={selected.has(preset.id)}
-                    onChange={(event) => toggle([preset.id], event.target.checked)}
-                  />
+                  <label className="hit-area">
+                    <input
+                      type={multiple ? 'checkbox' : 'radio'}
+                      name={multiple ? undefined : radioGroup}
+                      aria-label={`Choose ${preset.name}${whereabouts(preset) ? ` (${whereabouts(preset)})` : ''}`}
+                      checked={selected.has(preset.id)}
+                      onChange={(event) => toggle([preset.id], event.target.checked)}
+                    />
+                  </label>
                 </td>
                 <td>
                   {preset.name}

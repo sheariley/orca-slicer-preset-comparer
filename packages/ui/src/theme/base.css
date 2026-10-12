@@ -129,6 +129,7 @@ body {
 }
 
 .type-tabs button {
+  min-height: 32px;
   border: 0;
   padding: 4px 12px;
   background: transparent;
@@ -153,6 +154,8 @@ body {
 select,
 input[type='search'],
 input[type='text'] {
+  /* A 32 px hit area for touch, like buttons. */
+  min-height: 32px;
   padding: 4px 8px;
   border: 1px solid var(--c-border);
   border-radius: 4px;
@@ -178,6 +181,22 @@ input[type='text'] {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* A labelled checkbox: the whole label is its hit area, at least 32 px tall. */
+label.toggle {
+  min-height: 32px;
+}
+
+/* A checkbox or radio without visible text (in tables): a 32 × 32 px hit area around it. */
+label.hit-area {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  vertical-align: middle;
+  cursor: pointer;
 }
 
 /*
@@ -360,6 +379,7 @@ input[type='text'] {
 }
 
 .info-tip-button {
+  flex-shrink: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -489,12 +509,8 @@ input[type='radio'] {
 }
 
 .diff .select-cell {
+  padding: 0 4px;
   text-align: center;
-}
-
-/* A 32 × 32 px hit area around the 16 px checkbox. */
-.diff .select-cell input {
-  margin: 4px;
 }
 
 button.icon-button {
@@ -754,12 +770,8 @@ button.selection-button {
 }
 
 .target-table .select-cell {
+  padding: 0 6px;
   text-align: center;
-}
-
-/* A 32 × 32 px hit area around the 16 px checkbox. */
-.target-table .select-cell input {
-  margin: 8px;
 }
 
 .target-table tbody tr[data-selected] > * {
