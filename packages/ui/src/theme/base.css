@@ -774,8 +774,22 @@ button.selection-button {
   text-align: center;
 }
 
+/* A row under the mouse: its name and box choose it. */
+.target-table tbody tr:hover > * {
+  background: var(--c-surface);
+}
+
 .target-table tbody tr[data-selected] > * {
   background: var(--c-changed);
+}
+
+/* A preset's name, a label for its checkbox or radio: clicking it chooses the preset. */
+.target-table label.preset-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  min-height: 32px;
+  cursor: pointer;
 }
 
 .target-table .badge {

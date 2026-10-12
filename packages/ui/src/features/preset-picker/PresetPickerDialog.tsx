@@ -261,11 +261,12 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
             </tr>
           </thead>
           <tbody>
-            {shown.map((preset) => (
+            {shown.map((preset, index) => (
               <tr key={preset.id} data-selected={selected.has(preset.id) || undefined}>
                 <td className="select-cell">
                   <label className="hit-area">
                     <input
+                      id={`${radioGroup}-${index}`}
                       type={multiple ? 'checkbox' : 'radio'}
                       name={multiple ? undefined : radioGroup}
                       aria-label={`Choose ${preset.name}${whereabouts(preset) ? ` (${whereabouts(preset)})` : ''}`}
@@ -275,14 +276,19 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
                   </label>
                 </td>
                 <td>
-                  {preset.name}
-                  {preset.origin === 'system' && (
-                    <span className="badge">{preset.vendor ?? 'System'}</span>
-                  )}
-                  {preset.details?.selectable === false && <span className="badge">Template</span>}
-                  {whereabouts(preset) && preset.origin !== 'system' && (
-                    <span className="badge">{whereabouts(preset)}</span>
-                  )}
+                  {/* The name chooses the preset too. */}
+                  <label className="preset-name" htmlFor={`${radioGroup}-${index}`}>
+                    {preset.name}
+                    {preset.origin === 'system' && (
+                      <span className="badge">{preset.vendor ?? 'System'}</span>
+                    )}
+                    {preset.details?.selectable === false && (
+                      <span className="badge">Template</span>
+                    )}
+                    {whereabouts(preset) && preset.origin !== 'system' && (
+                      <span className="badge">{whereabouts(preset)}</span>
+                    )}
+                  </label>
                 </td>
               </tr>
             ))}

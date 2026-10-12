@@ -304,6 +304,14 @@ describe('ComparerRoot', () => {
       await user.type(within(dialog).getByRole('searchbox'), 'generic');
       await user.click(within(dialog).getByRole('radio', { name: 'Choose Generic PLA' }));
       expect(dialog).toHaveTextContent('Chosen: Generic PLA');
+      // Clicking a name chooses that preset too.
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      await user.clear(within(dialog).getByRole('searchbox'));
+      await user.click(within(dialog).getByText('PETG', { selector: 'label' }));
+      expect(dialog).toHaveTextContent('Chosen: PETG');
+      await user.click(within(dialog).getByLabelText('Show system presets'));
+      await user.type(within(dialog).getByRole('searchbox'), 'generic');
+      await user.click(within(dialog).getByText('Generic PLA', { selector: 'label' }));
       await user.click(within(dialog).getByRole('button', { name: 'Choose' }));
 
       // The name may be cut short, so its info tip shows it in full.
@@ -366,7 +374,9 @@ describe('ComparerRoot', () => {
       renderComparer();
       const dialog = await openPicker(user);
 
-      await user.click(within(dialog).getByRole('checkbox', { name: 'Choose ABS' }));
+      // Clicking the name ticks the preset, like its checkbox.
+      await user.click(within(dialog).getByText('ABS', { selector: 'label' }));
+      expect(within(dialog).getByRole('checkbox', { name: 'Choose ABS' })).toBeChecked();
       await user.type(
         within(dialog).getByRole('searchbox', { name: 'Filter presets by name' }),
         'pe',
