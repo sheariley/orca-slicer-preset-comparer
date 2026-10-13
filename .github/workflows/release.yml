@@ -1,0 +1,160 @@
+name: Release
+
+# On a v<x.y.z> tag: checks the tag matches the app's version, creates a draft GitHub release with
+# the changelog's notes, builds the desktop installers on every OS and the plugin file, and attaches
+# them to the draft. Publishing the draft stays a manual step.
+#
+# Run it by hand (Actions > Release > Run workflow) to build everything as workflow artifacts,
+# without a release, e.g. to try the installers before tagging.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+
+jobs:
+  prepare:
+    name: Prepare
+    runs-on: ubuntu-latest
+    outputs:
+      release-id: ${{ steps.release.outputs.id }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Check the version
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: node scripts/version.mjs check ${TAG:+--tag "$TAG"}
+      - name: Release notes
+        id: notes
+        env:
+          RELEASE: ${{ github.ref_type == 'tag' && '--release' || '' }}
+        run: |
+          version=$(node -p "require('./package.json').version")
+          node scripts/release-notes.mjs "$version" $RELEASE > notes.md
+          cat >> notes.md <<'EOF'
+
+          ---
+
+          The installers aren't signed yet, so Windows and macOS warn the first time you open them. See [Installing](https://github.com/sheariley/orca-slicer-preset-comparer#installing) for what to do.
+          EOF
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          cat notes.md
+      - name: Create the draft release
+        id: release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.notes.outputs.version }}
+        run: |
+          find_release() {
+            gh api "repos/$GITHUB_REPOSITORY/releases" --paginate \
+              --jq ".[] | select(.tag_name == \"$TAG\") | \"\(.id) \(.draft)\""
+          }
+          # A re-run reuses its draft (with fresh notes), but never touches a published release.
+          existing=$(find_release)
+          if [ -n "$existing" ]; then
+            read -r id draft <<< "$existing"
+            if [ "$draft" != "true" ]; then
+              echo "::error::The $TAG release is already published."
+              exit 1
+            fi
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$id" -F body=@notes.md > /dev/null
+          else
+            prerelease=()
+            if [[ "$VERSION" == *-* ]]; then prerelease=(--prerelease); fi
+            gh release create "$TAG" --draft --verify-tag --title "Preset Comparer $VERSION" \
+              --notes-file notes.md "${prerelease[@]}"
+            read -r id draft <<< "$(find_release)"
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+
+  desktop:
+    name: Desktop (${{ matrix.name }})
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            args: --bundles nsis,msi
+          - name: macOS Apple Silicon
+            os: macos-latest
+            target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
+          - name: macOS Intel
+            os: macos-latest
+            target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles app,dmg
+          - name: Linux
+            # The oldest Ubuntu runner, so the builds also run on older distributions (glibc).
+            os: ubuntu-22.04
+            args: --bundles appimage,deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri
+          key: ${{ matrix.target }}
+      - name: Install Tauri's Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: pnpm install --frozen-lockfile
+      - uses: tauri-apps/tauri-action@1deb371b0cd8bd54025b384f1cd735e725c4060f # action-v1.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          args: ${{ matrix.args }}
+          releaseId: ${{ needs.prepare.outputs.release-id }}
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          releaseDraft: true
+          # Tauri names files after the product name, whose spaces GitHub would turn into dots.
+          releaseAssetNamePattern: OrcaSlicer-Preset-Comparer_[version]_[arch][setup][ext]
+          uploadWorkflowArtifacts: ${{ github.ref_type != 'tag' }}
+
+  plugin:
+    name: Plugin
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build:plugin
+      - name: Attach to the draft release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release upload "$TAG" apps/orca-plugin/dist/orca_preset_comparer.py --clobber
+      - uses: actions/upload-artifact@v7
+        if: github.ref_type != 'tag'
+        with:
+          name: orca-plugin
+          path: apps/orca-plugin/dist/orca_preset_comparer.py

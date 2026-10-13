@@ -39,8 +39,11 @@ const [command, ...args] = process.argv.slice(2);
 
 if (command === 'set') {
   const version = args[0];
-  if (!version || !/^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/.test(version)) {
-    console.error('Usage: pnpm set-version <major.minor.patch>, e.g. 0.2.0 or 0.2.0-beta.1');
+  // A pre-release suffix must be a number: the Windows MSI bundler (WiX) rejects anything else.
+  if (!version || !/^\d+\.\d+\.\d+(-\d+)?$/.test(version)) {
+    console.error(
+      'Usage: pnpm set-version <major.minor.patch>, e.g. 0.2.0, or 0.2.0-1 for a pre-release',
+    );
     process.exit(1);
   }
   for (const location of LOCATIONS) {

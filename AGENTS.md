@@ -158,6 +158,10 @@ orca-slicer-preset-comparer/
 ├── scripts/run-python.mjs      # runs the right Python interpreter name on each OS
 ├── .github/workflows/ci.yml    # checks on Windows, macOS, and Linux + desktop build
 ├── .github/workflows/upstream-drift.yml # weekly: is the setting catalog still in step with OrcaSlicer's main?
+├── .github/workflows/release.yml # on a v* tag: draft GitHub release with installers for every OS + the plugin
+├── CHANGELOG.md                # Keep a Changelog; each version's section becomes its release notes
+├── scripts/version.mjs         # pnpm set-version / check-version
+├── scripts/release-notes.mjs   # prints a version's changelog section for the release workflow
 │
 ├── packages/
 │   ├── core/                   # pure domain logic: no I/O, DOM, React, or host code
@@ -295,6 +299,17 @@ pnpm check-version      # fail if those versions disagree (CI runs it; --tag v<x
 ```
 
 Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, plus `pnpm test:python` if you touched the plugin or the bridge protocol. Update `TASKS.md` too.
+
+## Releasing
+
+Releases are built by `.github/workflows/release.yml` from a `v<x.y.z>` tag, into a **draft** GitHub release that's published by hand after a smoke test.
+
+1. On `main`, with CI green: `pnpm set-version <x.y.z>`, then date the version's section in `CHANGELOG.md` (`## [x.y.z] - YYYY-MM-DD`). The workflow refuses a tag that doesn't match the version, or whose changelog section is missing or undated (`scripts/release-notes.mjs --release`).
+2. Commit, then tag and push: `git tag v<x.y.z> && git push origin v<x.y.z>`.
+3. The workflow creates the draft (or reuses it on a re-run, never a published release) with the changelog section as its notes, builds the installers (Windows NSIS and MSI, macOS DMG for Apple Silicon and Intel, Linux AppImage and `.deb`, on Ubuntu 22.04 for older glibc), and attaches them and the plugin file. `tauri-apps/tauri-action` is pinned to a commit.
+4. Install the draft's builds, check them, and publish.
+
+Running the workflow by hand (Actions › Release › Run workflow) builds everything as workflow artifacts without a release. The builds are unsigned: macOS ones are ad-hoc signed (`bundle.macOS.signingIdentity: "-"`), so Apple Silicon doesn't call them damaged. Pre-release versions need a numeric suffix (`0.2.0-1`, not `0.2.0-beta.1`), because the MSI bundler (WiX) accepts only numbers there.
 
 ## Development environment
 

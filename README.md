@@ -4,7 +4,7 @@ Compare an OrcaSlicer filament or process preset with any number of others, see 
 
 ## Status
 
-In development, with no release yet: build it from source (below). The desktop app is complete enough for daily use and has been tested against a real OrcaSlicer folder on Windows.
+In development, heading for a first release (0.1.0). The desktop app is complete enough for daily use and has been tested against a real OrcaSlicer folder on Windows; the macOS and Linux builds haven't been tested on those systems yet.
 
 What works in the desktop app:
 
@@ -16,11 +16,20 @@ What works in the desktop app:
 
 Not yet:
 
-- Installers: only builds from source for now.
 - The OrcaSlicer plugin: it builds and compares (read-only), but hasn't been tested inside OrcaSlicer, whose plugin system is still nightly-only.
 - Opening a preset file from outside OrcaSlicer's folder.
 
 See [TASKS.md](TASKS.md) for everything planned.
+
+## Installing
+
+Download the installer for your system from the [latest release](https://github.com/sheariley/orca-slicer-preset-comparer/releases/latest). The installers aren't signed yet, so Windows and macOS warn the first time you open them.
+
+- **Windows 10 or 11:** run `OrcaSlicer-Preset-Comparer_<version>_x64-setup.exe` (or the `.msi`). If SmartScreen says "Windows protected your PC", choose **More info**, then **Run anyway**.
+- **macOS:** open the `.dmg` for your Mac (`aarch64` for Apple Silicon, `x64` for Intel) and drag the app to Applications. The first time you open it, macOS says it can't verify the app: open **System Settings › Privacy & Security**, scroll down, and choose **Open Anyway**.
+- **Linux:** install the `.deb` (`sudo apt install ./OrcaSlicer-Preset-Comparer_<version>_amd64.deb`), or make the `.AppImage` executable (`chmod +x`) and run it. AppImages need FUSE 2 (`libfuse2`, or `libfuse2t64` on Ubuntu 24.04 and later).
+
+Close OrcaSlicer before saving presets with the comparer, and restart it afterwards to see the changes.
 
 ## Prerequisites
 
