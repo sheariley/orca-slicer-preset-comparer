@@ -1,5 +1,8 @@
 {
   "name": "orca-slicer-preset-comparer",
+  "version": "0.1.0",
+  "description": "Compare OrcaSlicer filament and process presets, copy settings between them, and save them back.",
+  "license": "AGPL-3.0-only",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@12.9.1",
@@ -19,7 +22,9 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "extract-settings": "pnpm --filter @comparer/extract-settings start",
-    "sync-fixtures": "pnpm --filter @comparer/sync-fixtures start"
+    "sync-fixtures": "pnpm --filter @comparer/sync-fixtures start",
+    "set-version": "node scripts/version.mjs set",
+    "check-version": "node scripts/version.mjs check"
   },
   "devDependencies": {
     "@eslint/js": "catalog:",

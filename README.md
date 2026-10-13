@@ -45,3 +45,7 @@ pnpm build:plugin     # writes apps/orca-plugin/dist/orca_preset_comparer.py
 ## Contributing
 
 Read [AGENTS.md](AGENTS.md) first. It covers the architecture, the package dependency rules, and the OrcaSlicer details the code relies on. [docs/architecture.md](docs/architecture.md) has a diagram of how the pieces fit, and [TASKS.md](TASKS.md) lists open work.
+
+## License
+
+[GNU Affero General Public License, version 3](LICENSE) (AGPL-3.0-only), the same as OrcaSlicer, whose setting definitions and profiles the comparer builds on.

@@ -2,6 +2,7 @@
 name = "comparer-desktop"
 version = "0.1.0"
 description = "OrcaSlicer Preset Comparer"
+license = "AGPL-3.0-only"
 edition = "2021"
 
 [lib]

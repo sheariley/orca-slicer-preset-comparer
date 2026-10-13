@@ -263,6 +263,7 @@ Enforce these with ESLint and dependency-cruiser so CI fails on a violation. Don
 - **Generated files:** never edit them by hand. Regenerate `packages/setting-catalog/data/settings.json` with `pnpm extract-settings`, the system-profile fixtures with `pnpm sync-fixtures`, and the plugin with `pnpm build:plugin`.
 - **Source imports use explicit `.ts`/`.tsx` extensions** (`allowImportingTsExtensions`). Packages export their TypeScript source directly; there's no per-package build step.
 - **Formatting:** Prettier (`pnpm format`). CI runs `pnpm format:check`.
+- **License:** AGPL-3.0-only, like OrcaSlicer (the catalog and fixtures hold text and profiles extracted from it). Keep the `license` fields in `package.json`, `Cargo.toml`, and `tauri.conf.json` in step with `LICENSE`.
 
 ## Testing
 
@@ -289,6 +290,8 @@ pnpm build:desktop      # Tauri release build
 pnpm build:plugin       # single-file plugin: apps/orca-plugin/dist/orca_preset_comparer.py
 pnpm extract-settings   # regenerate the setting catalog from OrcaSlicer on GitHub (--ref <branch|tag|commit>, default main; --orca <path> for a local clone; --check compares instead of writing; --verbose lists skipped defaults)
 pnpm sync-fixtures      # refresh system-profile fixtures from ../OrcaSlicer (or --orca <path>)
+pnpm set-version 0.2.0  # set one version in every package, tauri.conf.json, Cargo.toml/.lock, and the plugin header
+pnpm check-version      # fail if those versions disagree (CI runs it; --tag v<x.y.z> also checks a release tag)
 ```
 
 Before finishing a change, run `pnpm lint`, `pnpm typecheck`, and `pnpm test`, plus `pnpm test:python` if you touched the plugin or the bridge protocol. Update `TASKS.md` too.
