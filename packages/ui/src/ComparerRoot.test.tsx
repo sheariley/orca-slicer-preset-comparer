@@ -321,6 +321,27 @@ describe('ComparerRoot', () => {
     });
   });
 
+  it("leaves out a target that can't be opened, says why, and opens the rest", async () => {
+    const user = userEvent.setup();
+    renderComparer(false, undefined, [filament('Orphan', { inherits: 'Gone' })]);
+
+    await compare(user, 'PLA', 'Orphan', 'PETG');
+
+    expect(
+      await screen.findByText(
+        '"Orphan" couldn\'t be opened, so it was left out of the comparison:',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      '"Orphan" inherits from "Gone", which wasn\'t found.',
+    );
+    expect(await screen.findByRole('columnheader', { name: /PETG/ })).toBeInTheDocument();
+    expect(screen.queryByRole('columnheader', { name: /Orphan/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: TARGETS_BUTTON })).toHaveAccessibleName(
+      'Target: PETG',
+    );
+  });
+
   describe('choosing targets', () => {
     async function openPicker(user: User) {
       await chooseBase(user, 'PLA');
@@ -412,6 +433,39 @@ describe('ComparerRoot', () => {
       expect(
         within(dialog).getByRole('checkbox', { name: 'Choose Generic PLA' }),
       ).not.toBeChecked();
+    });
+
+    it('remembers its filters and sort order, separately from the base picker', async () => {
+      const user = userEvent.setup();
+      const settings = memorySettings();
+      renderComparer(false, settings);
+      let dialog = await openPicker(user);
+
+      await user.type(
+        within(dialog).getByRole('searchbox', { name: 'Filter presets by name' }),
+        'P',
+      );
+      await user.click(within(dialog).getByRole('button', { name: /^Name/ }));
+      expect(names(dialog)).toEqual(['PETG']);
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      await user.click(screen.getByRole('button', { name: TARGETS_BUTTON }));
+      dialog = screen.getByRole('dialog', { name: 'Choose targets' });
+      expect(within(dialog).getByRole('searchbox', { name: 'Filter presets by name' })).toHaveValue(
+        'P',
+      );
+      expect(settings.saved).toMatchObject({
+        'targetPicker.filter': 'P',
+        'targetPicker.sort': 'descending',
+      });
+      await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+
+      // The base picker keeps its own.
+      await user.click(screen.getByRole('button', { name: BASE_BUTTON }));
+      dialog = screen.getByRole('dialog', { name: 'Choose the base preset' });
+      expect(within(dialog).getByRole('searchbox', { name: 'Filter presets by name' })).toHaveValue(
+        '',
+      );
     });
 
     it('hides templates until asked, and filters by vendor and printer', async () => {

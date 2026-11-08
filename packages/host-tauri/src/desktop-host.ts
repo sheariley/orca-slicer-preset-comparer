@@ -6,9 +6,12 @@ import {
   orcaPresetVersion,
   orcaSlicerFormat,
   createDetailsLister,
+  findNamedPreset,
+  presetRenames,
   serializeProfile,
   type HostCapabilities,
   type PresetRef,
+  type PresetRenames,
   type ProfileRepository,
   type ProfileType,
 } from '@comparer/core';
@@ -39,14 +42,18 @@ const CAPABILITIES: HostCapabilities = {
 
 const DEFAULT_RETRY_DELAYS_MS: readonly number[] = [50, 150, 400, 1200];
 
+/** How many system preset files are read at once. */
+const READ_BATCH = 32;
+
 /**
  * Reads presets from OrcaSlicer's data folder:
  *   system/<Vendor>/<type>/<name>.json        copies of the installed vendor profiles (also in subfolders)
  *   user/<user_id>/<type>/<name>.json         user presets (each with a sibling .info file)
  *   user/<user_id>/<type>/base/<name>.json    user root presets (inherits ""), parents of others
  * <user_id> is "default" when signed out, or the account id when signed in.
- * Preset ids are absolute file paths. Names come from file names, which OrcaSlicer keeps
- * equal to the preset name.
+ * Preset ids are absolute file paths. System presets are named by their files' `name` (vendors'
+ * file names often differ); user presets by their file names, which OrcaSlicer keeps equal to
+ * their names.
  */
 export function createDesktopHost({
   fs,
@@ -86,24 +93,67 @@ export function createDesktopHost({
     return refs;
   }
 
-  async function scan(): Promise<PresetRef[]> {
-    const refs: PresetRef[] = [];
-    for (const vendor of await fs.list(join(dataDir, 'system'))) {
-      if (!vendor.isDirectory) continue;
-      for (const type of EDITABLE_TYPES) {
-        // Vendors may group their presets in subfolders (OrcaFilamentLibrary keeps its bases in
-        // filament/base/ and most presets in a folder per brand).
-        refs.push(
-          ...(await presetsIn(
-            join(dataDir, 'system', vendor.name, type),
-            type,
-            'system',
-            vendor.name,
-            true,
+  const readJson = (path: string): Promise<Record<string, unknown>> =>
+    fs
+      .readText(path)
+      .then((text) => JSON.parse(text) as unknown)
+      .then((value) =>
+        value && typeof value === 'object' && !Array.isArray(value)
+          ? (value as Record<string, unknown>)
+          : {},
+      )
+      .catch(() => ({}));
+
+  /**
+   * The system presets with their content, read once: they only change when OrcaSlicer updates
+   * them. Each is named by its file's `name`, as OrcaSlicer names it: vendors' file names often
+   * differ ("Bambu Support For PA/PET @base" can't be a file name).
+   */
+  let system: Promise<{ ref: PresetRef; content: Record<string, unknown> }[]> | undefined;
+  const systemPresets = () =>
+    (system ??= (async () => {
+      const refs: PresetRef[] = [];
+      for (const vendor of await fs.list(join(dataDir, 'system'))) {
+        if (!vendor.isDirectory) continue;
+        for (const type of EDITABLE_TYPES) {
+          // Vendors may group their presets in subfolders (OrcaFilamentLibrary keeps its bases in
+          // filament/base/ and most presets in a folder per brand).
+          refs.push(
+            ...(await presetsIn(
+              join(dataDir, 'system', vendor.name, type),
+              type,
+              'system',
+              vendor.name,
+              true,
+            )),
+          );
+        }
+      }
+      const presets: { ref: PresetRef; content: Record<string, unknown> }[] = [];
+      for (let start = 0; start < refs.length; start += READ_BATCH) {
+        presets.push(
+          ...(await Promise.all(
+            refs.slice(start, start + READ_BATCH).map(async (ref) => {
+              const content = await readJson(ref.id);
+              const name = content['name'];
+              return {
+                ref: typeof name === 'string' && name !== '' ? { ...ref, name } : ref,
+                content,
+              };
+            }),
           )),
         );
       }
-    }
+      return presets;
+    })());
+
+  /** The renames system presets record (`renamed_from`; see findNamedPreset). */
+  let renames: Promise<PresetRenames> | undefined;
+  const systemRenames = () => (renames ??= systemPresets().then(presetRenames));
+
+  /** User presets, named by their file names, which OrcaSlicer keeps equal to their names. */
+  async function userPresets(): Promise<PresetRef[]> {
+    const refs: PresetRef[] = [];
     for (const user of await fs.list(userRoot)) {
       if (!user.isDirectory) continue;
       for (const type of EDITABLE_TYPES) {
@@ -112,12 +162,20 @@ export function createDesktopHost({
         refs.push(...(await presetsIn(join(folder, 'base'), type, 'user', user.name)));
       }
     }
+    return refs;
+  }
+
+  async function scan(): Promise<PresetRef[]> {
+    const refs = [...(await systemPresets()).map(({ ref }) => ref), ...(await userPresets())];
     return refs.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Listing details come from the files themselves (see presetDetails).
-  const listWithDetails = createDetailsLister(
-    async (ref) => JSON.parse(await fs.readText(ref.id)) as unknown,
+  // Listing details come from the files themselves (see presetDetails); system presets' from the
+  // content read once above.
+  const listWithDetails = createDetailsLister(async (ref) =>
+    ref.origin === 'system'
+      ? ((await systemPresets()).find((preset) => preset.ref.id === ref.id)?.content ?? {})
+      : JSON.parse(await fs.readText(ref.id)),
   );
 
   /**
@@ -159,10 +217,10 @@ export function createDesktopHost({
     }
   }
 
-  /** The user folder (user/<user_id>/) a user preset's file lives in. */
+  /** The name of the user folder (user/<user_id>) a user preset's file lives in. */
   const userFolderOf = (ref: PresetRef) =>
-    ref.origin === 'user'
-      ? ref.id.slice(0, ref.id.indexOf(fs.separator, userRoot.length + 1) + 1)
+    ref.origin === 'user' && ref.id.startsWith(userRoot + fs.separator)
+      ? ref.id.slice(userRoot.length + 1, ref.id.indexOf(fs.separator, userRoot.length + 1))
       : undefined;
 
   return {
@@ -191,16 +249,11 @@ export function createDesktopHost({
     },
 
     async resolveParent(child, parentName) {
-      const candidates = (await scan()).filter(
-        (ref) => ref.type === child.type && ref.name === parentName,
-      );
-      const childFolder = userFolderOf(child);
-      // The child's own user folder first, then the same vendor, then any system preset.
-      return (
-        candidates.find((ref) => childFolder && ref.id.startsWith(childFolder)) ??
-        candidates.find((ref) => ref.origin === 'system' && ref.vendor === child.vendor) ??
-        candidates.find((ref) => ref.origin === 'system')
-      );
+      // As OrcaSlicer looks parents up (see findNamedPreset): by name, then renamed system presets.
+      const presets = (await scan()).map((ref) => ({ ref }));
+      const named = (name: string) => presets.filter(({ ref }) => ref.name === name);
+      const self = { ...child, folder: child.folder ?? userFolderOf(child) };
+      return findNamedPreset(self, parentName, named, await systemRenames())?.ref;
     },
 
     /**
@@ -245,7 +298,7 @@ export function createDesktopHost({
           await writeAtomically(path.replace(/\.json$/i, '.info'), info);
           // OrcaSlicer only loads new presets when it starts.
           return {
-            ref: { id: path, name, type, origin: 'user' as const },
+            ref: { id: path, name, type, origin: 'user' as const, folder: userFolder },
             reloadRequired: 'restart' as const,
           };
         } catch (error) {

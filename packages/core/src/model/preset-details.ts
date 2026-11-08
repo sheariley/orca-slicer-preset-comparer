@@ -1,3 +1,4 @@
+import { findNamedPreset, libraryFallbackName, presetRenames } from './parent-lookup.ts';
 import type { PresetDetails, PresetRef } from './profile.ts';
 
 /** A preset and its own file's content, as hosts list them. */
@@ -8,9 +9,9 @@ export interface ListedPreset {
 
 /**
  * Adds listing details to every preset (see PresetDetails), from the presets' own files: each
- * follows its `inherits` chain within `presets`, by name. Parents are looked up the way hosts
- * resolve them: in the child's own user folder first, then among system presets of its vendor,
- * then any preset of the type with that name.
+ * follows its `inherits` chain within `presets`, by name, the way OrcaSlicer looks parents up
+ * (see parent-lookup.ts: the child's own user folder first, then system presets of its vendor,
+ * then any; renamed system presets; the library fallback).
  */
 export function presetDetails(presets: readonly ListedPreset[]): PresetRef[] {
   const byName = new Map<string, ListedPreset[]>();
@@ -18,21 +19,15 @@ export function presetDetails(presets: readonly ListedPreset[]): PresetRef[] {
     const key = `${preset.ref.type}\n${preset.ref.name}`;
     byName.set(key, [...(byName.get(key) ?? []), preset]);
   }
+  const renames = presetRenames(presets);
   const parentOf = ({ ref, content }: ListedPreset): ListedPreset | undefined => {
     const name = typeof content.inherits === 'string' ? content.inherits : '';
     if (name === '') return undefined;
-    const candidates = (byName.get(`${ref.type}\n${name}`) ?? []).filter(
-      (candidate) => candidate.ref.id !== ref.id,
-    );
+    const named = (candidate: string) => byName.get(`${ref.type}\n${candidate}`) ?? [];
+    const fallback = libraryFallbackName(name);
     return (
-      candidates.find(
-        (candidate) => candidate.ref.origin === 'user' && candidate.ref.folder === ref.folder,
-      ) ??
-      candidates.find(
-        (candidate) => candidate.ref.origin === 'system' && candidate.ref.vendor === ref.vendor,
-      ) ??
-      candidates.find((candidate) => candidate.ref.origin === 'system') ??
-      candidates[0]
+      findNamedPreset(ref, name, named, renames) ??
+      (fallback === undefined ? undefined : findNamedPreset(ref, fallback, named, renames))
     );
   };
   /** The preset and its parents, leaf first; stops at a missing parent or a cycle. */

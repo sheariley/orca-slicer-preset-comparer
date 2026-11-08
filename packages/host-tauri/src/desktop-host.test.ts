@@ -160,6 +160,60 @@ describe('createDesktopHost', () => {
     );
   });
 
+  it("names system presets by their files' name, which can differ from the file name", async () => {
+    const files = new Map([
+      [
+        `${DATA_DIR}/system/OrcaFilamentLibrary/filament/Bambu/Bambu Support For PA PET @base.json`,
+        '{"name":"Bambu Support For PA/PET @base","instantiation":"false"}',
+      ],
+      [
+        `${DATA_DIR}/system/OrcaFilamentLibrary/filament/Bambu/Bambu Support For PA PET @System.json`,
+        '{"name":"Bambu Support For PA PET @System","inherits":"Bambu Support For PA/PET @base"}',
+      ],
+    ]);
+    const host = desktopHost(memoryFileSystem(files));
+    const presets = await host.listPresets({ type: 'filament' });
+
+    expect(presets.map((ref) => ref.name)).toEqual([
+      'Bambu Support For PA PET @System',
+      'Bambu Support For PA/PET @base',
+    ]);
+    expect((await host.resolveParent(presets[0]!, 'Bambu Support For PA/PET @base'))?.id).toBe(
+      `${DATA_DIR}/system/OrcaFilamentLibrary/filament/Bambu/Bambu Support For PA PET @base.json`,
+    );
+  });
+
+  it('resolves a parent renamed in a vendor update by its old name (renamed_from)', async () => {
+    const files = new Map([
+      [
+        `${DATA_DIR}/system/Elegoo/filament/Elegoo ASA @System.json`,
+        '{"name":"Elegoo ASA @System","renamed_from":"Elegoo ASA"}',
+      ],
+      [
+        `${DATA_DIR}/user/default/filament/My ASA.json`,
+        '{"name":"My ASA","inherits":"Elegoo ASA"}',
+      ],
+    ]);
+    const host = desktopHost(memoryFileSystem(files));
+    const presets = await host.listPresets({ type: 'filament' });
+    const mine = presets.find((ref) => ref.name === 'My ASA')!;
+
+    expect((await host.resolveParent(mine, 'Elegoo ASA'))?.name).toBe('Elegoo ASA @System');
+    // The picker's details follow the rename too.
+    expect(mine.details?.vendor).toBe('Elegoo');
+  });
+
+  it("doesn't resolve a parent that's only in another user folder, as OrcaSlicer doesn't", async () => {
+    const files = new Map([
+      [`${DATA_DIR}/user/1234/filament/base/My Base.json`, '{"name":"My Base","inherits":""}'],
+      [`${DATA_DIR}/user/default/filament/My PETG.json`, '{"name":"My PETG","inherits":"My Base"}'],
+    ]);
+    const host = desktopHost(memoryFileSystem(files));
+    const petg = (await host.listPresets()).find((ref) => ref.name === 'My PETG')!;
+
+    expect(await host.resolveParent(petg, 'My Base')).toBeUndefined();
+  });
+
   it('reads system presets once for their details, and user presets on every listing', async () => {
     const files = new Map([
       [
@@ -364,7 +418,7 @@ describe('creating presets', () => {
 
     const path = `${DATA_DIR}/user/b8b63496/filament/My PLA.json`;
     expect(result).toEqual({
-      ref: { id: path, name: 'My PLA', type: 'filament', origin: 'user' },
+      ref: { id: path, name: 'My PLA', type: 'filament', origin: 'user', folder: 'b8b63496' },
       reloadRequired: 'restart',
     });
     expect(fs.files.get(path)).toBe(

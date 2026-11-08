@@ -374,6 +374,16 @@ label.hit-area {
   color: var(--c-error);
 }
 
+.open-failures {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.open-failures > p {
+  margin: 0;
+}
+
 /* InfoTip: the info button keeps a 32 × 32 px hit area (touch) without growing the layout. */
 .info-tip-anchor {
   display: inline-flex;

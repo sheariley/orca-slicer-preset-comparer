@@ -38,6 +38,8 @@ interface ComparisonEditorProps {
   readonly onPendingChange: (ids: ReadonlySet<string>) => void;
   /** Takes a target out of the comparison (from its column header). */
   readonly onRemoveTarget: (id: string) => void;
+  /** Takes targets that couldn't be opened out of the comparison (they have no changes). */
+  readonly onOpenFailed: (ids: readonly string[]) => void;
   /**
    * A system preset's changes were saved as a new user preset, now open in the session. The
    * screen shows the new preset in place of the system one, without reopening the session.
@@ -53,6 +55,12 @@ type SaveState =
   | { readonly step: 'working'; readonly results: readonly TargetSaveResult[] }
   | { readonly step: 'error'; readonly error: unknown };
 
+/** A target that couldn't be opened, and why. */
+interface OpenFailure {
+  readonly preset: PresetRef;
+  readonly error: unknown;
+}
+
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /**
@@ -67,6 +75,7 @@ export function ComparisonEditor({
   targets,
   onPendingChange,
   onRemoveTarget,
+  onOpenFailed,
   onPresetCreated,
 }: ComparisonEditorProps) {
   const app = useComparerApp();
@@ -98,18 +107,27 @@ export function ComparisonEditor({
       ),
     );
   }
-  // ...and new targets open in the background; until then, their columns wait.
+  // ...and new targets open in the background; until then, their columns wait. Each opens on its
+  // own, so one that can't be opened (say, its parent is missing) doesn't hold up the rest: it's
+  // taken out of the comparison, and a message says which preset and why.
   const missing = targets.filter((target) => !session.presets.has(target.id));
   const missingKey = missing.map((target) => target.id).join('\n');
-  const [openError, setOpenError] = useState<{ key: string; error: unknown } | null>(null);
+  const [openFailures, setOpenFailures] = useState<readonly OpenFailure[]>([]);
   useEffect(() => {
     if (missing.length === 0) return;
     let current = true;
-    app.openSession(missing).then(
-      (opened) =>
-        current && setSession((state) => addToSession(state, [...opened.presets.values()])),
-      (error: unknown) => current && setOpenError({ key: missingKey, error }),
-    );
+    void Promise.allSettled(missing.map((target) => app.openSession([target]))).then((outcomes) => {
+      if (!current) return;
+      const opened = outcomes.flatMap((outcome) =>
+        outcome.status === 'fulfilled' ? [...outcome.value.presets.values()] : [],
+      );
+      const failures = outcomes.flatMap((outcome, index) =>
+        outcome.status === 'rejected' ? [{ preset: missing[index]!, error: outcome.reason }] : [],
+      );
+      if (opened.length > 0) setSession((state) => addToSession(state, opened));
+      setOpenFailures(failures);
+      if (failures.length > 0) onOpenFailed(failures.map(({ preset }) => preset.id));
+    });
     return () => {
       current = false;
     };
@@ -117,7 +135,6 @@ export function ComparisonEditor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [app, missingKey]);
   const opening = missing.length > 0;
-  const openFailed = opening && openError?.key === missingKey ? openError : null;
 
   const shown = useMemo(
     () => targets.filter((target) => session.presets.has(target.id)),
@@ -359,8 +376,19 @@ export function ComparisonEditor({
       )}
       {save.step === 'error' && <ErrorMessage error={save.error} />}
 
-      {openFailed && <ErrorMessage error={openFailed.error} />}
-      {opening && !openFailed && <p className="status">Opening presets…</p>}
+      {openFailures.length > 0 && (
+        <div className="open-failures">
+          <p>
+            {openFailures.length === 1
+              ? `"${openFailures[0]!.preset.name}" couldn't be opened, so it was left out of the comparison:`
+              : `${openFailures.length} presets couldn't be opened, so they were left out of the comparison:`}
+          </p>
+          {openFailures.map(({ preset, error }) => (
+            <ErrorMessage key={preset.id} error={error} />
+          ))}
+        </div>
+      )}
+      {opening && <p className="status">Opening presets…</p>}
       {targets.length === 0 ? (
         <p className="status">Choose targets to compare with {base.name}.</p>
       ) : (

@@ -91,6 +91,29 @@ describe('ComparerApp', () => {
     await expect(orphanApp.loadResolved(orphan!)).rejects.toMatchObject({ kind: 'not-found' });
   });
 
+  it("falls back to OrcaFilamentLibrary's preset for a missing Generic parent, as OrcaSlicer does", async () => {
+    const mine: ProfileDocument = {
+      ref: { id: 'user/Duramic PETG', name: 'Duramic PETG', type: 'filament', origin: 'user' },
+      content: { name: 'Duramic PETG', inherits: 'My Generic PETG', nozzle_temperature: ['245'] },
+    };
+    const libraryApp = createComparerApp({
+      repository: createMemoryHost({
+        documents: [
+          mine,
+          doc('Generic PETG @System', 'filament', { fan_max_speed: ['60'] }, 'OrcaFilamentLibrary'),
+        ],
+      }),
+      catalog: noCatalog,
+    });
+
+    const resolved = await libraryApp.loadResolved(mine.ref);
+
+    expect(resolved.chain.map((ref) => ref.name)).toEqual(['Duramic PETG', 'Generic PETG @System']);
+    expect(resolved.settings.get('fan_max_speed')).toMatchObject({
+      definedBy: { name: 'Generic PETG @System' },
+    });
+  });
+
   it('applies the templates a preset includes, found by name like parents', async () => {
     const templateApp = createComparerApp({
       repository: createMemoryHost({

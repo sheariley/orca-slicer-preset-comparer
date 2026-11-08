@@ -2,6 +2,7 @@ import {
   ComparerError,
   includesOf,
   inheritsFrom,
+  libraryFallbackName,
   resolveChain,
   type IncludedTemplates,
   type PresetRef,
@@ -41,7 +42,7 @@ export async function loadChain(
 
     const parentName = inheritsFrom(document);
     if (parentName === undefined) break;
-    current = await repository.resolveParent(current, parentName);
+    current = await findParent(repository, current, parentName);
     if (!current) {
       throw new ComparerError(
         'not-found',
@@ -51,6 +52,21 @@ export async function loadChain(
     }
   }
   return chain;
+}
+
+/**
+ * The preset `child` inherits from: the host's match for the name, or as OrcaSlicer falls back
+ * when there's none, OrcaFilamentLibrary's preset for a "Generic" material (libraryFallbackName).
+ */
+async function findParent(
+  repository: ProfileRepository,
+  child: PresetRef,
+  parentName: string,
+): Promise<PresetRef | undefined> {
+  const found = await repository.resolveParent(child, parentName);
+  if (found) return found;
+  const fallback = libraryFallbackName(parentName);
+  return fallback === undefined ? undefined : repository.resolveParent(child, fallback);
 }
 
 /** A preset's inheritance chain (leaf first) and the templates its documents include. */
