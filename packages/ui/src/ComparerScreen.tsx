@@ -65,7 +65,8 @@ export function ComparerScreen() {
   // system preset's place without a new one (see onPresetCreated).
   const [picks, setPicks] = useState(0);
   const comparisonKey = base ? String(picks) : null;
-  const session = useAsync(comparisonKey, () => app.openSession([base!, ...targets]));
+  // The base opens here; the editor opens the targets, each on its own (see ComparisonEditor).
+  const session = useAsync(comparisonKey, () => app.openSession([base!]));
   const pickBase = (next: PresetRef | null) =>
     leaveComparison(() => {
       setBase(next);
@@ -117,6 +118,11 @@ export function ComparerScreen() {
     setListVersion((version) => version + 1);
   }, []);
   const onPendingChange = useCallback((ids: ReadonlySet<string>) => setUnsaved(ids), []);
+  const onOpenFailed = useCallback(
+    (ids: readonly string[]) =>
+      setTargets((current) => current.filter((target) => !ids.includes(target.id))),
+    [],
+  );
 
   /** Runs a change that would close the current comparison, confirming first if it has edits. */
   const leaveComparison = (change: () => void) => {
@@ -247,6 +253,7 @@ export function ComparerScreen() {
           targets={targets}
           onPendingChange={onPendingChange}
           onRemoveTarget={(id) => changeTargets(targets.filter((target) => target.id !== id))}
+          onOpenFailed={onOpenFailed}
           onPresetCreated={onPresetCreated}
         />
       )}

@@ -2,7 +2,7 @@ import type { PresetRef } from '@comparer/core';
 import { useEffect, useId, useRef, useState } from 'react';
 import { Dialog } from '../../components/Dialog.tsx';
 import { InfoTip } from '../../components/InfoTip.tsx';
-import { isBoolean, usePreference } from '../../hooks/usePreference.ts';
+import { isBoolean, isString, usePreference } from '../../hooks/usePreference.ts';
 
 interface CommonProps {
   /** Every preset of the comparison's type. */
@@ -29,6 +29,9 @@ interface MultipleProps extends CommonProps {
 
 type SortOrder = 'ascending' | 'descending';
 
+const isSortOrder = (value: unknown): value is SortOrder =>
+  value === 'ascending' || value === 'descending';
+
 const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? '' : 's'}`;
 
 /**
@@ -46,22 +49,26 @@ export function PresetPickerDialog(props: SingleProps | MultipleProps) {
       : new Set(props.chosen ? [props.chosen.id] : []),
   );
   const radioGroup = useId();
-  const [text, setText] = useState('');
-  const [order, setOrder] = useState<SortOrder>('ascending');
-  const [showSystem, setShowSystem] = usePreference(
-    multiple ? 'targetPicker.showSystem' : 'basePicker.showSystem',
+  // The filters and sort order are remembered, separately for each picker.
+  const picker = multiple ? 'targetPicker' : 'basePicker';
+  const [text, setText] = usePreference(`${picker}.filter`, '', isString);
+  const [order, setOrder] = usePreference<SortOrder>(`${picker}.sort`, 'ascending', isSortOrder);
+  const [showSystem, setShowSystem] = usePreference(`${picker}.showSystem`, false, isBoolean);
+  // Templates OrcaSlicer never offers (instantiation: "false") stay hidden unless asked for.
+  const [showTemplates, setShowTemplates] = usePreference(
+    `${picker}.showTemplates`,
     false,
     isBoolean,
   );
-
-  // Templates OrcaSlicer never offers (instantiation: "false") stay hidden unless asked for.
-  const [showTemplates, setShowTemplates] = useState(false);
-  const [vendor, setVendor] = useState('');
-  const [printer, setPrinter] = useState('');
+  // A remembered vendor or printer that this list doesn't have filters nothing.
+  const [savedVendor, setVendor] = usePreference(`${picker}.vendor`, '', isString);
+  const [savedPrinter, setPrinter] = usePreference(`${picker}.printer`, '', isString);
 
   const candidates = presets.filter((preset) => preset.id !== exclude?.id);
   const vendors = sortedUnique(candidates.flatMap((preset) => vendorOf(preset) ?? []));
   const printers = sortedUnique(candidates.flatMap((preset) => preset.details?.printers ?? []));
+  const vendor = vendors.includes(savedVendor) ? savedVendor : '';
+  const printer = printers.includes(savedPrinter) ? savedPrinter : '';
   const hasTemplates = candidates.some((preset) => preset.details?.selectable === false);
   // Same-named presets (e.g. copies in two user folders) say where each one is.
   const nameCounts = new Map<string, number>();

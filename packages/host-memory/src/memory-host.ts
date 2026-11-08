@@ -1,7 +1,9 @@
 import {
   ComparerError,
+  findNamedPreset,
   orcaSlicerFormat,
   presetDetails,
+  presetRenames,
   serializeProfile,
   type HostCapabilities,
   type ProfileDocument,
@@ -59,11 +61,10 @@ export function createMemoryHost({
     },
 
     async resolveParent(child, parentName) {
-      // Same vendor first, then anywhere (user presets inherit across vendors).
-      const candidates = [...byId.values()]
-        .map((document) => document.ref)
-        .filter((ref) => ref.type === child.type && ref.name === parentName);
-      return candidates.find((ref) => ref.vendor === child.vendor) ?? candidates[0];
+      // As OrcaSlicer looks parents up, renamed system presets included (see findNamedPreset).
+      const stored = [...byId.values()];
+      const named = (name: string) => stored.filter(({ ref }) => ref.name === name);
+      return findNamedPreset(child, parentName, named, presetRenames(stored))?.ref;
     },
 
     async saveDocument({ ref, text, previousText }) {
