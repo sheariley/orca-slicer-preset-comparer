@@ -16,6 +16,9 @@ describe('migrateLegacyValue', () => {
     expect(migrateLegacyValue('top_surface_pattern', 'zig-zag')?.value).toBe('rectilinear');
     expect(migrateLegacyValue('ensure_vertical_shell_thickness', '1')?.value).toBe('ensure_all');
     expect(migrateLegacyValue('enable_power_loss_recovery', 'TRUE')?.value).toBe('enable');
+    expect(migrateLegacyValue('enable_arc_fitting', '1')?.value).toBe('enabled');
+    expect(migrateLegacyValue('enable_arc_fitting', 'False')?.value).toBe('disabled');
+    expect(migrateLegacyValue('enable_arc_fitting', 'enabled')).toBeUndefined();
     expect(migrateLegacyValue('ironing_angle', '-1')?.value).toBe('0');
   });
 

@@ -12,7 +12,7 @@ import type { RawValue } from '../model/profile.ts';
  * hash.
  */
 export const LEGACY_VALUE_RULES_SOURCE_HASH =
-  'b44eb95de269517c012cd61b3f2945287ff997b4e4ff6f015c5d0055a8504a40';
+  'e74f1d73652fe3bbb6471e91ebb23b44d0151eca343188c9f6d4ea4b16961e23';
 
 /** What a legacy rule does to one setting: its current key (null: dropped) and value. */
 export interface LegacyMigration {
@@ -96,6 +96,15 @@ const VALUE_MAPS: ReadonlyMap<string, ReadonlyMap<string, string>> = new Map([
   ['wall_direction', new Map([['auto', 'ccw']])],
 ]);
 
+/**
+ * Settings that were on/off and are now options: "1" or "true" (any case) becomes the first
+ * option, "0" or "false" the second.
+ */
+const BOOLEANS_NOW_OPTIONS: ReadonlyMap<string, { on: string; off: string }> = new Map([
+  ['enable_power_loss_recovery', { on: 'enable', off: 'disable' }],
+  ['enable_arc_fitting', { on: 'enabled', off: 'disabled' }],
+]);
+
 const WALL_SEQUENCES: ReadonlyMap<string, string> = new Map([
   ['inner wall/outer wall/infill', 'inner wall/outer wall'],
   ['infill/inner wall/outer wall', 'inner wall/outer wall'],
@@ -156,10 +165,11 @@ export function migrateLegacyValue(key: string, raw: RawValue): LegacyMigration 
   if (key === 'extruder_type') {
     return { key, value: each((element) => element.replaceAll('DirectDrive', 'Direct Drive')) };
   }
-  if (key === 'enable_power_loss_recovery') {
+  const choices = BOOLEANS_NOW_OPTIONS.get(key);
+  if (choices) {
     const lower = value.toLowerCase();
-    if (value === '1' || lower === 'true') return { key, value: asRaw('enable') };
-    if (value === '0' || lower === 'false') return { key, value: asRaw('disable') };
+    if (value === '1' || lower === 'true') return { key, value: asRaw(choices.on) };
+    if (value === '0' || lower === 'false') return { key, value: asRaw(choices.off) };
     return undefined;
   }
   if (key === 'rotate_solid_infill_direction') {
