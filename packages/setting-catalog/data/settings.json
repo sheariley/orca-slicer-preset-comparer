@@ -1,7 +1,7 @@
 {
   "source": {
     "repository": "OrcaSlicer/OrcaSlicer",
-    "commit": "f4bde2da0a41d4deb1f312b3c2bd11e85270b6b2"
+    "commit": "b7cc20fd1a2b1843ffa92e8f9398cc872e080e00"
   },
   "presetTypes": {
     "process": [
@@ -18,10 +18,12 @@
       "slicing_mode",
       "top_shell_layers",
       "top_shell_thickness",
+      "top_color_penetration_layers",
       "top_surface_density",
       "bottom_surface_density",
       "bottom_shell_layers",
       "bottom_shell_thickness",
+      "bottom_color_penetration_layers",
       "extra_perimeters_on_overhangs",
       "ensure_vertical_shell_thickness",
       "reduce_crossing_wall",
@@ -38,9 +40,9 @@
       "is_infill_first",
       "sparse_infill_density",
       "fill_multiline",
-      "tpms_adaptive",
-      "tpms_interior_density",
-      "tpms_adaptive_gradient",
+      "adaptive_infill_mode",
+      "adaptive_infill_interior_density",
+      "adaptive_infill_gradient",
       "gyroid_optimized",
       "sparse_infill_pattern",
       "sparse_infill_smooth_factor",
@@ -329,11 +331,13 @@
       "tree_support_auto_brim",
       "tree_support_brim_width",
       "gcode_comments",
+      "high_precision_gcode",
       "gcode_label_objects",
       "initial_layer_travel_speed",
       "initial_layer_travel_acceleration",
       "initial_layer_travel_jerk",
       "exclude_object",
+      "exclude_object_tolerance",
       "slow_down_layers",
       "infill_anchor",
       "infill_anchor_max",
@@ -731,6 +735,9 @@
       "wipe_tower_brim_width": "prime_tower_brim_width",
       "tool_change_gcode": "change_filament_gcode",
       "bridge_fan_speed": "overhang_fan_speed",
+      "tpms_adaptive": "adaptive_infill_mode",
+      "tpms_interior_density": "adaptive_infill_interior_density",
+      "tpms_adaptive_gradient": "adaptive_infill_gradient",
       "wipe_tower_extruder": "wipe_tower_filament",
       "support_material_extruder": "support_filament",
       "support_material_interface_extruder": "support_interface_filament",
@@ -755,7 +762,7 @@
       "machine_switch_extruder_time": "machine_tool_change_time",
       "is_ixex": "is_imex"
     },
-    "sourceHash": "b44eb95de269517c012cd61b3f2945287ff997b4e4ff6f015c5d0055a8504a40"
+    "sourceHash": "e74f1d73652fe3bbb6471e91ebb23b44d0151eca343188c9f6d4ea4b16961e23"
   },
   "settings": {
     "absolute_correction": {
@@ -777,7 +784,7 @@
     "accel_to_decel_factor": {
       "label": "accel_to_decel",
       "category": "Speed",
-      "tooltip": "Klipper's max_accel_to_decel will be adjusted to this %% of acceleration.",
+      "tooltip": "Klipper's max_accel_to_decel will be adjusted to this % of acceleration.",
       "unit": "%",
       "default": "50%",
       "sections": {
@@ -790,7 +797,7 @@
     },
     "activate_air_filtration": {
       "label": "Activate air filtration",
-      "tooltip": "Activate for better air filtration. G-code command: M106 P3 S(0-255)",
+      "tooltip": "Activate for better air filtration.\nG-code command: M106 P3 S(0-255)",
       "default": [
         "0"
       ],
@@ -832,7 +839,7 @@
     },
     "activate_chamber_temp_control": {
       "label": "Activate temperature control",
-      "tooltip": "Enable this option for automated chamber temperature control. This option activates the emitting of an M191 command before the \"machine_start_gcode\"\n which sets the chamber temperature and waits until it is reached. In addition, it emits an M141 command at the end of the print to turn off the chamber heater, if present.\n\nThis option relies on the firmware supporting the M191 and M141 commands either via macros or natively and is usually used when an active chamber heater is installed.",
+      "tooltip": "Enable this option for automated chamber temperature control. This option activates the emitting of an M191 command before the \"machine_start_gcode\" which sets the chamber temperature and waits until it is reached. In addition, it emits an M141 command at the end of the print to turn off the chamber heater, if present.\n\nThis option relies on the firmware supporting the M191 and M141 commands either via macros or natively and is usually used when an active chamber heater is installed.",
       "default": [
         "0"
       ],
@@ -850,6 +857,76 @@
       "unit": "mm",
       "default": "0"
     },
+    "adaptive_infill_gradient": {
+      "label": "Adaptive gradient",
+      "category": "Strength",
+      "tooltip": "How the density changes from the surface to the center of the object.\nLinear: the density changes at a constant rate.\nQuadratic: the density stays close to the sparse infill density near the surface and changes faster towards the center.\nExponential: the density changes quickly just below the surface and levels off towards the center.",
+      "enumValues": [
+        "linear",
+        "quadratic",
+        "exponential"
+      ],
+      "enumLabels": [
+        "Linear",
+        "Quadratic",
+        "Exponential"
+      ],
+      "default": "linear",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
+        }
+      }
+    },
+    "adaptive_infill_interior_density": {
+      "label": "Interior density",
+      "category": "Strength",
+      "tooltip": "Density of the adaptive infill at the center of the object.",
+      "unit": "%",
+      "default": "5%",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
+        }
+      }
+    },
+    "adaptive_infill_mode": {
+      "label": "Adaptive density (experimental)",
+      "category": "Strength",
+      "tooltip": "Grades the Gyroid and TPMS infill inside the object: its cells grow from the surface of the object towards its center. The sparse infill density is used at the surface and the interior density at the center.\nDistance warp, Smooth blend and Stepped shells follow the distance to the nearest surface, including the top and bottom, with the interior density at the point farthest from it:\n - Distance warp: one continuous pattern, stretched and sheared where the distance changes across directions, as in plates and long parts.\n - Smooth blend: the patterns of neighbouring densities blended into each other, with small loops where they meet.\n - Stepped shells: shells of the regular pattern at densities about 1.5 times apart, their lines joined along the shell boundaries.\n - Lobes: follows the 3D shape of the object, including its top and bottom. Every lobe, a part joined to the rest by a narrower neck, is graded towards its own center.\n - Normal Z, Y or X: follows the sections of the object normal to that axis, so the density does not change along it.",
+      "enumValues": [
+        "disabled",
+        "distance_warp",
+        "smooth_blend",
+        "stepped_shells",
+        "lobes",
+        "normal_z",
+        "normal_y",
+        "normal_x"
+      ],
+      "enumLabels": [
+        "Disabled",
+        "Distance warp",
+        "Smooth blend",
+        "Stepped shells",
+        "Lobes",
+        "Normal Z",
+        "Normal Y",
+        "Normal X"
+      ],
+      "default": "disabled",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Infill",
+          "order": 12
+        }
+      }
+    },
     "adaptive_pressure_advance": {
       "label": "Enable adaptive pressure advance (beta)",
       "tooltip": "With increasing print speeds (and hence increasing volumetric flow through the nozzle) and increasing accelerations, it has been observed that the effective PA value typically decreases. This means that a single PA value is not always 100% optimal for all features and a compromise value is usually used that does not cause too much bulging on features with lower flow speed and accelerations while also not causing gaps on faster features.\n\nThis feature aims to address this limitation by modeling the response of your printer's extrusion system depending on the volumetric flow speed and acceleration it is printing at. Internally, it generates a fitted model that can extrapolate the needed pressure advance for any given volumetric flow speed and acceleration, which is then emitted to the printer depending on the current print conditions.\n\nWhen enabled, the pressure advance value above is overridden. However, a reasonable default value above is strongly recommended to act as a fallback and for when tool changing.\n\n",
@@ -866,7 +943,7 @@
     },
     "adaptive_pressure_advance_bridges": {
       "label": "Static pressure advance for bridges",
-      "tooltip": "Static pressure advance value for bridges. Set to 0 to apply the same pressure advance as \nequivalent walls (using adaptive settings if enabled).\n\nA lower PA value when printing bridges helps reduce the appearance of slight under-extrusion immediately after bridges. This is caused by the pressure drop in the nozzle when printing in the air and a lower PA helps counteract this.",
+      "tooltip": "Static pressure advance value for bridges. Set to 0 to apply the same pressure advance as equivalent walls (using adaptive settings if enabled).\n\nA lower PA value when printing bridges helps reduce the appearance of slight under-extrusion immediately after bridges. This is caused by the pressure drop in the nozzle when printing in the air and a lower PA helps counteract this.",
       "default": [
         "0"
       ],
@@ -908,7 +985,7 @@
     },
     "additional_cooling_fan_speed": {
       "label": "Fan speed",
-      "tooltip": "Speed of auxiliary part cooling fan. Auxiliary fan will run at this speed during printing except the first several layers which is defined by no cooling layers.\nPlease enable auxiliary_fan in printer settings to use this feature. G-code command: M106 P2 S(0-255)",
+      "tooltip": "Speed of auxiliary part cooling fan. Auxiliary fan will run at this speed during printing except the first several layers which is defined by no cooling layers.\nPlease enable auxiliary_fan in printer settings to use this feature.\nG-code command: M106 P2 S(0-255)",
       "unit": "%",
       "default": [
         "0"
@@ -964,7 +1041,7 @@
     "allow_rotations": {
       "label": "Allow rotation when arranging",
       "tooltip": "If enabled, Arrange will allow rotation when placing objects.",
-      "default": "1"
+      "default": "0"
     },
     "alternate_extra_wall": {
       "label": "Alternate extra wall",
@@ -994,7 +1071,7 @@
     },
     "auxiliary_fan": {
       "label": "Auxiliary part cooling fan",
-      "tooltip": "Enable this option if machine has auxiliary part cooling fan. G-code command: M106 P2 S(0-255).",
+      "tooltip": "Enable this option if machine has auxiliary part cooling fan.\nG-code command: M106 P2 S(0-255).",
       "default": "0"
     },
     "avoid_extrusion_cali_region": {
@@ -1021,20 +1098,30 @@
     },
     "bed_exclude_area": {
       "label": "Excluded bed area",
-      "tooltip": "Unprintable area in XY plane. For example, X1 Series printers use the front left corner to cut filament during filament change. The area is expressed as polygon by points in following format: \"XxY, XxY, ...\"",
+      "tooltip": "Unprintable area in XY plane. For example, X1 Series printers use the front left corner to cut filament during filament change. The area is expressed as a polygon in the format \"XxY, XxY, ...\". It constrains material and model placement, but allows machine travel. Configure toolhead collision volumes separately for G-code checking and travel avoidance.",
       "default": [
         "0x0"
       ]
     },
+    "bed_exclude_volume_mode": {
+      "label": "Collision volume behavior",
+      "tooltip": "Choose whether all nozzles use the same collision volumes, derive toolhead-relative volumes from each nozzle's XY offset, or configure independent volumes for every extruder. In individual mode, select each extruder on the Extruder page to configure its volumes.",
+      "default": "shared"
+    },
+    "bed_exclude_volumes": {
+      "label": "Toolhead collision volumes",
+      "tooltip": "Collision volumes used for model and generated-material exclusion, G-code checking, and travel avoidance. Use \"XxY, XxY, ...\" for a full-height polygon or \"ZMIN..ZMAX;XxY, XxY, ...\" for a Z-limited volume. Separate multiple volumes with \"|\". These volumes are additional to the excluded bed area. Automatic arrangement conservatively uses the bounding box of a non-convex volume.",
+      "default": ""
+    },
     "bed_mesh_max": {
       "label": "Bed mesh max",
-      "tooltip": "This option sets the max point for the allowed bed mesh area. Due to the probe's XY offset, most printers are unable to probe the entire bed. To ensure the probe point does not go outside the bed area, the minimum and maximum points of the bed mesh should be set appropriately. OrcaSlicer ensures that adaptive_bed_mesh_min/adaptive_bed_mesh_max values do not exceed these min/max points. This information can usually be obtained from your printer manufacturer. The default setting is (99999, 99999), which means there are no limits, thus allowing probing across the entire bed.",
+      "tooltip": "This option sets the max point for the allowed bed mesh area. Due to the probe's XY offset, most printers are unable to probe the entire bed. To ensure the probe point does not go outside the bed area, the minimum and maximum points of the bed mesh should be set appropriately. OrcaSlicer ensures that adaptive_bed_mesh_min/adaptive_bed_mesh_max values do not exceed these min/max points. This information can usually be obtained from your printer manufacturer.\n\nThe default setting is (99999, 99999), which means there are no limits, thus allowing probing across the entire bed.",
       "unit": "mm",
       "default": "99999,99999"
     },
     "bed_mesh_min": {
       "label": "Bed mesh min",
-      "tooltip": "This option sets the min point for the allowed bed mesh area. Due to the probe's XY offset, most printers are unable to probe the entire bed. To ensure the probe point does not go outside the bed area, the minimum and maximum points of the bed mesh should be set appropriately. OrcaSlicer ensures that adaptive_bed_mesh_min/adaptive_bed_mesh_max values do not exceed these min/max points. This information can usually be obtained from your printer manufacturer. The default setting is (-99999, -99999), which means there are no limits, thus allowing probing across the entire bed.",
+      "tooltip": "This option sets the min point for the allowed bed mesh area. Due to the probe's XY offset, most printers are unable to probe the entire bed. To ensure the probe point does not go outside the bed area, the minimum and maximum points of the bed mesh should be set appropriately. OrcaSlicer ensures that adaptive_bed_mesh_min/adaptive_bed_mesh_max values do not exceed these min/max points. This information can usually be obtained from your printer manufacturer.\n\nThe default setting is (-99999, -99999), which means there are no limits, thus allowing probing across the entire bed.",
       "unit": "mm",
       "default": "-99999,-99999"
     },
@@ -1072,7 +1159,7 @@
     "belt_frame_tilt_decouple": {
       "label": "Decouple machine-frame tilt",
       "category": "Printable space",
-      "tooltip": "Expert override: set the machine-frame (g-code shear/scale) tilt angle independently of the pre-slice rotation angle. When disabled, the machine-frame transform is derived from the belt tilt angle, so a single angle drives both stages. Enable only to compensate for a machine whose physical gantry tilt differs from the slicing rotation.",
+      "tooltip": "Expert override: set the machine-frame (G-code shear/scale) tilt angle independently of the pre-slice rotation angle. When disabled, the machine-frame transform is derived from the belt tilt angle, so a single angle drives both stages. Enable only to compensate for a machine whose physical gantry tilt differs from the slicing rotation.",
       "default": "0"
     },
     "belt_printer": {
@@ -1110,7 +1197,7 @@
     "belt_slice_rotation": {
       "label": "Belt tilt axis",
       "category": "Printable space",
-      "tooltip": "Axis the mesh is rotated about before slicing. This is the belt printer's tilt: an isometric (no distortion) rotation that also drives bed rendering and support gravity tilt, and that the g-code back-transform inverts before the machine-frame shear/scale and remap. X is the typical gantry tilt (belt travels along Y).",
+      "tooltip": "Axis the mesh is rotated about before slicing. This is the belt printer's tilt: an isometric (no distortion) rotation that also drives bed rendering and support gravity tilt, and that the G-code back-transform inverts before the machine-frame shear/scale and remap. X is the typical gantry tilt (belt travels along Y).",
       "default": "x"
     },
     "belt_slice_rotation_angle": {
@@ -1140,6 +1227,20 @@
     },
     "bottle_weight": {
       "default": "1"
+    },
+    "bottom_color_penetration_layers": {
+      "label": "Bottom paint penetration layers",
+      "category": "Strength",
+      "unit": "layers",
+      "tooltip": "The number of layers, including the bottom surface layer, that take the color painted on a bottom surface. Set to 0 to use the bottom shell layers. A value larger than the bottom shell also colors the sparse infill above the painted area.",
+      "default": "0",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Top/bottom shells",
+          "order": 11
+        }
+      }
     },
     "bottom_layer_direction": {
       "label": "Bottom layer direction",
@@ -1343,7 +1444,7 @@
     "bridge_line_width": {
       "label": "Bridge",
       "category": "Quality",
-      "tooltip": "Line width of the Bridge. If expressed as a %, it will be computed over the nozzle diameter.\nRecommended to use with a higher Bridge density or Bridge flow ratio.\n\nThe maximum value is 100% or the nozzle diameter.\nIf set to 0, the line width will match the Internal solid infill width.",
+      "tooltip": "Line width of the Bridge. If expressed as a %, it will be computed over the nozzle diameter.\nRecommended to use with a higher Bridge density or Bridge flow ratio.\n\nThe maximum value is 100% or the nozzle diameter.\nIf set to 0, the line width will match the Internal solid infill width, or the nozzle diameter for thick bridges.",
       "unit": "mm or %",
       "default": "100%",
       "sections": {
@@ -1370,7 +1471,7 @@
     "bridge_speed": {
       "label": "External",
       "category": "Speed",
-      "tooltip": "Speed of the externally visible bridge extrusions.\n\nIn addition, if Slow down for curled perimeters is disabled or Classic overhang mode is enabled, it will be the print speed of overhang walls that are supported by less than 13%, whether they are part of a bridge or an overhang.",
+      "tooltip": "Speed of the externally visible bridge extrusions.\n\nIn addition, if Slow down for curled perimeters is disabled, it will be the print speed of overhang walls that are supported by less than 13%, whether they are part of a bridge or an overhang.",
       "unit": "mm/s",
       "default": [
         "25"
@@ -1559,7 +1660,7 @@
     },
     "chamber_minimal_temperature": {
       "label": "Minimal",
-      "tooltip": "This is the chamber temperature at which printing should start, while the chamber continues heating toward the \"Target\" chamber temperature. For example, set the Target to 60 and the Minimal to 50 to begin printing once the chamber reaches 50℃, without waiting for the full 60℃.\n\nIt sets a G-code variable named chamber_minimal_temperature, which can be passed to your print start macro or a heat soak macro, like this: PRINT_START (other variables) CHAMBER_MIN_TEMP=[chamber_minimal_temperature].\n\nUnlike the \"Target\" chamber temperature, this option does not emit any M141/M191 commands; it only exposes the value to your custom G-code. It should not exceed the \"Target\" chamber temperature.",
+      "tooltip": "This is the chamber temperature at which printing should start, while the chamber continues heating toward the \"Target\" chamber temperature. For example, set the Target to 60 and the Minimal to 50 to begin printing once the chamber reaches 50℃, without waiting for the full 60℃.\n\nIt sets a G-code variable named chamber_minimal_temperature, which can be passed to your print start macro or a heat soak macro, like this:\nPRINT_START (other variables) CHAMBER_MIN_TEMP=[chamber_minimal_temperature]\n\nUnlike the \"Target\" chamber temperature, this option does not emit any M141/M191 commands; it only exposes the value to your custom G-code. It should not exceed the \"Target\" chamber temperature.",
       "unit": "℃",
       "fullLabel": "Chamber minimal temperature",
       "default": [
@@ -1575,7 +1676,7 @@
     },
     "chamber_temperature": {
       "label": "Chamber temperature",
-      "tooltip": "For high-temperature materials like ABS, ASA, PC, and PA, a higher chamber temperature can help suppress or reduce warping and potentially lead to higher interlayer bonding strength. However, at the same time, a higher chamber temperature will reduce the efficiency of air filtration for ABS and ASA.\n\nFor PLA, PETG, TPU, PVA, and other low-temperature materials, this option should be disabled (set to 0) as the chamber temperature should be low to avoid extruder clogging caused by material softening at the heat break.\n\nIf enabled, this parameter also sets a G-code variable named chamber_temperature, which can be used to pass the desired chamber temperature to your print start macro, or a heat soak macro like this: PRINT_START (other variables) CHAMBER_TEMP=[chamber_temperature]. This may be useful if your printer does not support M141/M191 commands, or if you desire to handle heat soaking in the print start macro if no active chamber heater is installed.",
+      "tooltip": "For high-temperature materials like ABS, ASA, PC, and PA, a higher chamber temperature can help suppress or reduce warping and potentially lead to higher interlayer bonding strength. However, at the same time, a higher chamber temperature will reduce the efficiency of air filtration for ABS and ASA.\n\nFor PLA, PETG, TPU, PVA, and other low-temperature materials, this option should be disabled (set to 0) as the chamber temperature should be low to avoid extruder clogging caused by material softening at the heat break.\n\nIf enabled, this parameter also sets a G-code variable named chamber_temperature, which can be used to pass the desired chamber temperature to your print start macro, or a heat soak macro like this:\nPRINT_START (other variables) CHAMBER_TEMP=[chamber_temperature]\nThis may be useful if your printer does not support M141/M191 commands, or if you desire to handle heat soaking in the print start macro if no active chamber heater is installed.",
       "unit": "℃",
       "fullLabel": "Chamber temperature",
       "default": [
@@ -1746,7 +1847,7 @@
     },
     "cooling_filter_enabled": {
       "label": "Use cooling filter",
-      "tooltip": "Enable this if printer support cooling filter",
+      "tooltip": "Enable this if the printer supports a cooling filter",
       "default": "0"
     },
     "cooling_tube_length": {
@@ -1964,7 +2065,7 @@
     "detect_overhang_wall": {
       "label": "Detect overhang walls",
       "category": "Quality",
-      "tooltip": "This detects the overhang percentage relative to line width and uses a different speed to print. For 100%% overhang, bridging speed is used.",
+      "tooltip": "This detects the overhang percentage relative to line width and uses a different speed to print. For 100% overhang, bridging speed is used.",
       "default": "1",
       "sections": {
         "process": {
@@ -2075,7 +2176,7 @@
     },
     "draft_shield": {
       "label": "Draft shield",
-      "tooltip": "A draft shield is useful to protect an ABS or ASA print from warping and detaching from print bed due to wind draft. It is usually needed only with open frame printers, i.e. without an enclosure.\n\nEnabled = skirt is as tall as the highest printed object. Otherwise 'Skirt height' is used.\nNote: With the draft shield active, the skirt will be printed at skirt distance from the object. Therefore, if brims are active it may intersect with them. To avoid this, increase the skirt distance value.\n",
+      "tooltip": "A draft shield is useful to protect an ABS or ASA print from warping and detaching from print bed due to wind draft. It is usually needed only with open frame printers, i.e. without an enclosure.\n\nEnabled = skirt is as tall as the highest printed object. Otherwise 'Skirt height' is used.",
       "enumValues": [
         "disabled",
         "enabled"
@@ -2173,8 +2274,18 @@
     },
     "enable_arc_fitting": {
       "label": "Arc fitting",
-      "tooltip": "Enable this to get a G-code file which has G2 and G3 moves. The fitting tolerance is same as the resolution.\n\nNote: For Klipper machines, this option is recommended to be disabled. Klipper does not benefit from arc commands as these are split again into line segments by the firmware. This results in a reduction in surface quality as line segments are converted to arcs by the slicer and then back to line segments by the firmware.",
-      "default": "0",
+      "tooltip": "Fit G2 and G3 arc moves to the toolpaths. Walls and surfaces are fitted within the resolution, while sparse infill, supports and the wipe tower use fixed tolerances.\n - Disabled: only straight G1 moves are used.\n - Enabled: arcs are fitted to all toolpaths.\n - Sparse infill only: arcs are fitted to the sparse infill only, which shortens the G-code of curved infill patterns without affecting the walls and surfaces.\n\nNote: For Klipper machines, Disabled is recommended. Klipper splits arcs back into line segments, which lowers the surface quality and can increase the print time.",
+      "enumValues": [
+        "disabled",
+        "enabled",
+        "sparse_infill"
+      ],
+      "enumLabels": [
+        "Disabled",
+        "Enabled",
+        "Sparse infill only"
+      ],
+      "default": "disabled",
       "sections": {
         "process": {
           "page": "Quality",
@@ -2446,6 +2557,19 @@
         }
       }
     },
+    "exclude_object_tolerance": {
+      "label": "Outline tolerance",
+      "tooltip": "Maximum deviation of the object outline written to EXCLUDE_OBJECT_DEFINE from the original outline. Larger values give fewer points, which helps firmware that stalls while parsing G-code with many objects. 0 keeps every point.",
+      "unit": "mm",
+      "default": "0.1",
+      "sections": {
+        "process": {
+          "page": "Others",
+          "group": "G-code output",
+          "order": 37
+        }
+      }
+    },
     "export_3mf": {
       "label": "Export 3MF",
       "tooltip": "This exports the project as a 3MF file.",
@@ -2460,6 +2584,11 @@
       "label": "Export slicing data",
       "tooltip": "Export slicing data to a folder",
       "default": "cached_data"
+    },
+    "export_statistics": {
+      "label": "Export statistics",
+      "tooltip": "Write the statistics of each sliced plate as JSON, as plate_N.statistics.json next to its G-code in the output directory and inside the 3MF of --export-3mf: print time, filament and feature totals, and the same per layer and per object.",
+      "default": "0"
     },
     "export_stl": {
       "label": "Export STL",
@@ -2552,6 +2681,13 @@
       "label": "Extruder AMS count",
       "tooltip": "AMS counts per extruder.",
       "default": []
+    },
+    "extruder_bed_exclude_volumes": {
+      "label": "Extruder collision volumes",
+      "tooltip": "Collision volumes used only by this extruder in individual mode. Use the same polygon and optional Z-range format as the shared collision volumes. Leave empty for no collision volumes on this extruder. Automatic arrangement conservatively uses the bounding box of a non-convex volume.",
+      "default": [
+        ""
+      ]
     },
     "extruder_clearance_dist_to_rod": {
       "label": "Distance to rod",
@@ -2673,6 +2809,10 @@
           "order": 21
         }
       }
+    },
+    "extrusion_role": {
+      "label": "Extrusion role",
+      "tooltip": "The new extrusion role/type that is going to be used\nPossible values:\n[\"Perimeter\", \"ExternalPerimeter\", \"OverhangPerimeter\", \"InternalInfill\", \"SolidInfill\", \"TopSolidInfill\", \"BottomSurface\", \"BridgeInfill\", \"GapFill\", \"Ironing\", \"Skirt\", \"Brim\", \"SupportMaterial\", \"SupportMaterialInterface\", \"SupportTransition\", \"WipeTower\", \"Mixed\"]"
     },
     "faded_layers": {
       "default": "10"
@@ -2842,7 +2982,7 @@
     },
     "filament_cooling_before_tower": {
       "label": "Wipe tower cooling",
-      "tooltip": "Temperature drop before entering filament tower",
+      "tooltip": "Temperature drop before entering the wipe tower.",
       "unit": "℃",
       "default": [
         "10"
@@ -3016,7 +3156,7 @@
     },
     "filament_extruder_id": {
       "label": "Filament extruder ID",
-      "tooltip": "The current extruder ID. The same as current_extruder."
+      "tooltip": "In filament start G-code, the index of the filament that is being loaded. In filament end G-code, the index of the filament that is being unloaded. The index is zero-based (first filament has index 0). At a tool change, filament end G-code gets the extruder index instead, unless the Type 1 wipe tower does the tool change. Machine end G-code gets the value from the last filament end G-code at the end of the print."
     },
     "filament_extruder_variant": {
       "label": "Filament's extruder variant",
@@ -3394,7 +3534,7 @@
     },
     "filament_pre_cooling_temperature_nc": {
       "label": "Hotend change",
-      "tooltip": "To prevent oozing, the nozzle temperature will be cooled during ramming. Note: only a cooldown command and fan activation are triggered, reaching the target temperature is not guaranteed. 0 means disabled.",
+      "tooltip": "To prevent oozing, the nozzle temperature will be cooled during ramming. 0 means disabled.\n\nNote: only a cooldown command and fan activation are triggered, reaching the target temperature is not guaranteed.",
       "unit": "℃",
       "default": [
         "0"
@@ -3709,7 +3849,7 @@
     },
     "filament_shrink": {
       "label": "Shrinkage (XY)",
-      "tooltip": "Enter the shrinkage percentage that the filament will get after cooling (94% if you measure 94mm instead of 100mm). The part will be scaled in XY to compensate. For multi-material prints, ensure filament shrinkage matches across all used filaments\nBe sure to allow enough space between objects, as this compensation is done after the checks.",
+      "tooltip": "Enter the shrinkage percentage that the filament will get after cooling (94% if you measure 94mm instead of 100mm). The part will be scaled in XY to compensate. For multi-material prints, ensure filament shrinkage matches across all used filaments.\nBe sure to allow enough space between objects, as this compensation is done after the checks.",
       "unit": "%",
       "default": [
         "100%"
@@ -4274,7 +4414,7 @@
     "fuzzy_skin_mode": {
       "label": "Fuzzy skin generator mode",
       "category": "Others",
-      "tooltip": "Fuzzy skin generation mode. Works only with Arachne!\nDisplacement: Сlassic mode when the pattern is formed by shifting the nozzle sideways from the original path.\nExtrusion: The mode when the pattern formed by the amount of extruded plastic. This is the fast and straight algorithm without unnecessary nozzle shake that gives a smooth pattern. But it is more useful for forming loose walls in the entire they array.\nCombined: Joint mode [Displacement] + [Extrusion]. The appearance of the walls is similar to [Displacement] Mode, but it leaves no pores between the perimeters.\n\nAttention! The [Extrusion] and [Combined] modes works only the fuzzy_skin_thickness parameter not more than the thickness of printed loop. At the same time, the width of the extrusion for a particular layer should also not be below a certain level. It is usually equal 15-25%% of a layer height. Therefore, the maximum fuzzy skin thickness with a perimeter width of 0.4 mm and a layer height of 0.2 mm will be 0.4-(0.2*0.25)=±0.35mm! If you enter a higher parameter than this, the error Flow::spacing() will displayed, and the model will not be sliced. You can choose this number until this error is repeated.",
+      "tooltip": "Fuzzy skin generation mode. Works only with Arachne!\nDisplacement: Сlassic mode when the pattern is formed by shifting the nozzle sideways from the original path.\nExtrusion: The mode when the pattern formed by the amount of extruded plastic. This is the fast and straight algorithm without unnecessary nozzle shake that gives a smooth pattern. But it is more useful for forming loose walls in the entire they array.\nCombined: Joint mode [Displacement] + [Extrusion]. The appearance of the walls is similar to [Displacement] Mode, but it leaves no pores between the perimeters.\n\nAttention! The [Extrusion] and [Combined] modes works only the fuzzy_skin_thickness parameter not more than the thickness of printed loop. At the same time, the width of the extrusion for a particular layer should also not be below a certain level. It is usually equal 15-25% of a layer height. Therefore, the maximum fuzzy skin thickness with a perimeter width of 0.4 mm and a layer height of 0.2 mm will be 0.4-(0.2*0.25)=±0.35mm! If you enter a higher parameter than this, the error Flow::spacing() will displayed, and the model will not be sliced. You can choose this number until this error is repeated.",
       "enumValues": [
         "displacement",
         "extrusion",
@@ -4487,7 +4627,7 @@
     },
     "gcode_comments": {
       "label": "Verbose G-code",
-      "tooltip": "Enable this to get a commented G-code file, with each line explained by a descriptive text. If you print from SD card, the additional weight of the file could make your firmware slow down.",
+      "tooltip": "Enable this to get a commented G-code file, with each line explained by a descriptive text.\n\nIf you print from SD card, the additional weight of the file could make your firmware slow down.",
       "default": "0",
       "sections": {
         "process": {
@@ -4508,7 +4648,7 @@
         "marlin2"
       ],
       "enumLabels": [
-        "Marlin(legacy)",
+        "Marlin (legacy)",
         "Klipper",
         "RepRapFirmware",
         "Repetier",
@@ -4518,7 +4658,7 @@
     },
     "gcode_label_objects": {
       "label": "Label objects",
-      "tooltip": "Enable this to add comments into the G-code labeling print moves with what object they belong to, which is useful for the Octoprint CancelObject plug-in. This setting is NOT compatible with Single Extruder Multi Material setup and Wipe into Object / Wipe into Infill.",
+      "tooltip": "Enable this to add comments into the G-code labeling print moves with what object they belong to, which is useful for the Octoprint CancelObject plug-in.\n\nThis setting is NOT compatible with Single Extruder Multi Material setup and Wipe into Object / Wipe into Infill.",
       "default": "1",
       "sections": {
         "process": {
@@ -4530,7 +4670,7 @@
     },
     "gcode_skip_config_block": {
       "label": "Skip G-code config block",
-      "tooltip": "Do not write the CONFIG_BLOCK (slicer configuration key/value pairs) into the G-code file. This can help with printers whose firmware crashes when parsing these comment lines (e.g. Anycubic go-klipper). Note: the G-code file will no longer contain slicer settings, so importing it back into OrcaSlicer will not restore the configuration.",
+      "tooltip": "Do not write the CONFIG_BLOCK (slicer configuration key/value pairs) into the G-code file. This can help with printers whose firmware crashes when parsing these comment lines (e.g. Anycubic go-klipper).\n\nNote: the G-code file will no longer contain slicer settings, so importing it back into OrcaSlicer will not restore the configuration.",
       "default": "0"
     },
     "grab_length": {
@@ -4607,6 +4747,18 @@
       "label": "High extruder current on filament swap",
       "tooltip": "It may be beneficial to increase the extruder motor current during the filament exchange sequence to allow for rapid ramming feed rates and to overcome resistance when loading a filament with an ugly shaped tip.",
       "default": "0"
+    },
+    "high_precision_gcode": {
+      "label": "High precision G-code (experimental)",
+      "tooltip": "Write X, Y, Z, I and J with 4 decimal places instead of 3, and E with 6 instead of 5, to reduce rounding errors in the G-code. With relative E distances, the rounding error of each move is also carried over to the next one. Supports are removed after printing, so they keep the standard precision. This may help stabilize extrusion with small nozzles (e.g. 0.2 mm) and thin layers (e.g. 0.08 mm or less), where each move extrudes so little material that rounding errors matter most. The effect depends strongly on how well the rest of the settings are tuned and may be hard to notice unless the print profile is well calibrated.\n\nThe G-code file becomes about 10 percent larger, which may slow down printers that parse G-code slowly.",
+      "default": "0",
+      "sections": {
+        "process": {
+          "page": "Others",
+          "group": "G-code output",
+          "order": 37
+        }
+      }
     },
     "hole_to_polyhole": {
       "label": "Convert holes to polyholes",
@@ -4785,7 +4937,7 @@
     },
     "imex_firmware_managed_zones": {
       "label": "Firmware-managed zones",
-      "tooltip": "When enabled, the slicer emits g-code with the primary zone's contents centered on bed origin (0,0). The printer firmware is responsible for placing copies/mirrors at each physical zone position. Enable only on printers whose firmware applies its own zone offsets in copy/mirror mode (e.g. RepRapFirmware IDEX duplication mode). Has no effect in Primary mode.",
+      "tooltip": "When enabled, the slicer emits G-code with the primary zone's contents centered on bed origin (0,0). The printer firmware is responsible for placing copies/mirrors at each physical zone position. Enable only on printers whose firmware applies its own zone offsets in copy/mirror mode (e.g. RepRapFirmware IDEX duplication mode). Has no effect in Primary mode.",
       "default": "0"
     },
     "imex_gantry_count": {
@@ -4795,7 +4947,7 @@
     },
     "imex_head_filament_map": {
       "label": "IDEX/IQEX head filament map",
-      "tooltip": "Per-plate override mapping physical heads to filament slots (1-based). Empty means use pem-inversion defaults.",
+      "tooltip": "Per-plate override mapping physical heads to filament slots (1-based). Empty means each head uses the first filament that the printer's physical extruder map routes to it.",
       "default": ""
     },
     "imex_mode_active_tools": {
@@ -5056,7 +5208,7 @@
     "infill_wall_overlap": {
       "label": "Infill/wall overlap",
       "category": "Strength",
-      "tooltip": "This allows the infill area to be enlarged slightly to overlap with walls for better bonding. The percentage value is relative to line width of sparse infill. Set this value to ~10-15% to minimize potential over extrusion and accumulation of material resulting in rough top surfaces.",
+      "tooltip": "This allows the infill area to be enlarged slightly to overlap with walls for better bonding. The percentage value is relative to the inner wall line width. Set this value to ~10-15% to minimize potential over extrusion and accumulation of material resulting in rough top surfaces.",
       "unit": "%",
       "default": "15%",
       "sections": {
@@ -5123,7 +5275,7 @@
     },
     "initial_layer_infill_speed": {
       "label": "First layer infill",
-      "tooltip": "This is the speed for solid infill parts of the first layer.",
+      "tooltip": "This is the speed for the first layer except for walls and brim, such as infill, gap fill and support.",
       "unit": "mm/s",
       "default": [
         "60"
@@ -5196,7 +5348,7 @@
     },
     "initial_layer_speed": {
       "label": "First layer",
-      "tooltip": "This is the speed for the first layer except for solid infill sections.",
+      "tooltip": "This is the speed for the walls and brim of the first layer.",
       "unit": "mm/s",
       "default": [
         "30"
@@ -5838,6 +5990,10 @@
         }
       }
     },
+    "last_extrusion_role": {
+      "label": "Last extrusion role",
+      "tooltip": "The previously used extrusion role/type\nPossible values:\n[\"Perimeter\", \"ExternalPerimeter\", \"OverhangPerimeter\", \"InternalInfill\", \"SolidInfill\", \"TopSolidInfill\", \"BottomSurface\", \"BridgeInfill\", \"GapFill\", \"Ironing\", \"Skirt\", \"Brim\", \"SupportMaterial\", \"SupportMaterialInterface\", \"SupportTransition\", \"WipeTower\", \"Mixed\"]"
+    },
     "lateral_lattice_angle_1": {
       "label": "Lateral lattice angle 1",
       "category": "Strength",
@@ -5887,7 +6043,7 @@
     },
     "layer_num": {
       "label": "Layer number",
-      "tooltip": "Index of the current layer. Zero-based (i.e. first layer is number 0), except in extrusion role change G-code, where it is one-based."
+      "tooltip": "Index of the current layer. The index is zero-based (first layer has index 0). Before the first layer starts, it is -1. In extrusion role change G-code, the index is one-based (first layer has index 1)."
     },
     "layer_z": {
       "label": "Layer Z",
@@ -6032,7 +6188,7 @@
     },
     "machine_end_gcode": {
       "label": "End G-code",
-      "tooltip": "Add end G-Code when finishing the entire print.",
+      "tooltip": "Add end G-code when finishing the entire print.",
       "default": "M104 S0 ; turn off temperature\nG28 X0  ; home X axis\nM84     ; disable motors\n"
     },
     "machine_hotend_change_time": {
@@ -6385,8 +6541,7 @@
     "min_length_factor": {
       "label": "Minimum wall length",
       "category": "Quality",
-      "tooltip": "Adjust this value to prevent short, unclosed walls from being printed, which could increase print time. Higher values remove more and longer walls.\n\nNOTE: Bottom and top surfaces will not be affected by this value to prevent visual gaps on the outside of the model. Adjust 'One wall threshold' in the Advanced settings below to adjust the sensitivity of what is considered a top-surface. 'One wall threshold' is only visible if this setting is set above the default value of 0.5, or if single-wall top surfaces is enabled.",
-      "unit": "mm",
+      "tooltip": "Adjust this value to prevent short, unclosed walls from being printed, which could increase print time. The value is a multiple of the wall width. Higher values remove more and longer walls.\n\nNOTE: Bottom and top surfaces will not be affected by this value to prevent visual gaps on the outside of the model. Adjust 'One wall threshold' in the 'Walls and surfaces' settings below to adjust the sensitivity of what is considered a top-surface. 'One wall threshold' is only visible if this setting is set above the default value of 0.5, or if single-wall top surfaces is enabled.",
       "default": "0.5",
       "sections": {
         "process": {
@@ -6424,7 +6579,7 @@
     "min_width_top_surface": {
       "label": "One wall threshold",
       "category": "Quality",
-      "tooltip": "If a top surface has to be printed and it's partially covered by another layer, it won't be considered at a top layer where its width is below this value. This can be useful to not let the 'one perimeter on top' trigger on surface that should be covered only by perimeters. This value can be a mm or a % of the perimeter extrusion width.\nWarning: If enabled, artifacts can be created if you have some thin features on the next layer, like letters. Set this setting to 0 to remove these artifacts.",
+      "tooltip": "If a top surface has to be printed and it's partially covered by another layer, it won't be considered at a top layer where its width is below this value. This can be useful to not let the 'one perimeter on top' trigger on surface that should be covered only by perimeters. This value can be a mm or a % of the perimeter extrusion width.\n\nWarning: If enabled, artifacts can be created if you have some thin features on the next layer, like letters. Set this setting to 0 to remove these artifacts.",
       "unit": "mm or %",
       "default": "300%",
       "sections": {
@@ -6454,7 +6609,7 @@
     },
     "mmu_segmented_region_interlocking_depth": {
       "label": "Interlocking depth of a segmented region",
-      "tooltip": "Interlocking depth of a segmented region. It will be ignored if \"mmu_segmented_region_max_width\" is zero or if \"mmu_segmented_region_interlocking_depth\" is bigger than \"mmu_segmented_region_max_width\". Zero disables this feature.",
+      "tooltip": "Interlocking depth of a segmented region. On every other layer, the segmented region is limited to this depth. It will be ignored if \"interlocking_beam\" is enabled. Zero disables this feature.",
       "unit": "mm",
       "category": "Advanced",
       "default": "0",
@@ -7109,7 +7264,7 @@
     "precise_outer_wall": {
       "label": "Precise wall",
       "category": "Quality",
-      "tooltip": "Improve shell precision by adjusting outer wall spacing. This also improves layer consistency. NOTE: This option will be ignored for outer-inner or inner-outer-inner wall sequences.",
+      "tooltip": "Improve shell precision by adjusting outer wall spacing. This also improves layer consistency.\n\nNote: This option will be ignored for outer-inner or inner-outer-inner wall sequences.",
       "default": "1",
       "sections": {
         "process": {
@@ -7552,6 +7707,10 @@
       "tooltip": "Insert G-code between objects. This parameter will only come into effect when you print your models object by object.",
       "default": ""
     },
+    "printing_filament_types": {
+      "label": "Used filament types",
+      "tooltip": "Underscore-separated list of all filament types used during the print."
+    },
     "process_change_extrusion_role_gcode": {
       "label": "Change extrusion role G-code (process)",
       "tooltip": "This G-code is inserted when the extrusion role is changed. It runs after the machine and filament extrusion role G-code.",
@@ -7588,7 +7747,14 @@
       "category": "Support",
       "tooltip": "This expands all raft layers in XY plane.",
       "unit": "mm",
-      "default": "1.5"
+      "default": "1.5",
+      "sections": {
+        "process": {
+          "page": "Support",
+          "group": "Raft",
+          "order": 23
+        }
+      }
     },
     "raft_first_layer_density": {
       "label": "First layer density",
@@ -7661,7 +7827,7 @@
     },
     "reduce_infill_retraction": {
       "label": "Reduce infill retraction",
-      "tooltip": "Don't retract when the travel is entirely within an infill area. That means the oozing can't been seen. This can reduce times of retraction for complex model and save printing time, but make slicing and G-code generating slower. Note that Z-hop is also not performed in areas where retraction is skipped.",
+      "tooltip": "Don't retract when the travel is entirely within an infill area. That means the oozing can't been seen. This can reduce times of retraction for complex model and save printing time, but make slicing and G-code generating slower.\n\nNote that Z-hop is also not performed in areas where retraction is skipped.",
       "default": "0",
       "sections": {
         "process": {
@@ -7698,6 +7864,11 @@
     },
     "relative_correction_z": {
       "default": "1"
+    },
+    "repair": {
+      "label": "Repair",
+      "tooltip": "Repair the meshes of the models as Fix Model does: close holes and cracks, orient them outward and remove self-intersections.",
+      "default": "0"
     },
     "repetitions": {
       "label": "Repetition count",
@@ -7866,7 +8037,7 @@
       ]
     },
     "role_based_wipe_speed": {
-      "label": "Role base wipe speed",
+      "label": "Role based wipe speed",
       "category": "Speed",
       "tooltip": "The wipe speed is determined by the speed of the current extrusion role. e.g. if a wipe action is executed immediately following an outer wall extrusion, the speed of the outer wall extrusion will be utilized for the wipe action.",
       "default": "1",
@@ -7936,7 +8107,7 @@
     "scarf_joint_speed": {
       "label": "Scarf joint speed",
       "category": "Quality",
-      "tooltip": "This option sets the printing speed for scarf joints. It is recommended to print scarf joints at a slow speed (less than 100 mm/s). It's also advisable to enable 'Extrusion rate smoothing' if the set speed varies significantly from the speed of the outer or inner walls. If the speed specified here is higher than the speed of the outer or inner walls, the printer will default to the slower of the two speeds. When specified as a percentage (e.g., 80%), the speed is calculated based on the respective outer or inner wall speed. The default value is set to 100%.",
+      "tooltip": "This option sets the printing speed for scarf joints. It is recommended to print scarf joints at a slow speed (less than 100 mm/s). It's also advisable to enable 'Extrusion rate smoothing' if the set speed varies significantly from the speed of the outer or inner walls.\n\nIf the speed specified here is higher than the speed of the outer or inner walls, the printer will default to the slower of the two speeds. When specified as a percentage (e.g., 80%), the speed is calculated based on the respective outer or inner wall speed. The default value is set to 100%.",
       "unit": "mm/s or %",
       "default": "100%",
       "sections": {
@@ -7964,7 +8135,7 @@
     "seam_gap": {
       "label": "Seam gap",
       "category": "Quality",
-      "tooltip": "In order to reduce the visibility of the seam in a closed loop extrusion, the loop is interrupted and shortened by a specified amount.\nThis amount can be specified in millimeters or as a percentage of the current extruder diameter. The default value for this parameter is 10%.",
+      "tooltip": "In order to reduce the visibility of the seam in a closed loop extrusion, the loop is interrupted and shortened by a specified amount.\nThis amount can be specified in millimeters or as a percentage of the nozzle diameter. The default value for this parameter is 10%.",
       "unit": "mm or %",
       "default": "10%",
       "sections": {
@@ -8133,11 +8304,6 @@
           "order": 7
         }
       }
-    },
-    "silent_mode": {
-      "label": "Silent Mode",
-      "tooltip": "Whether the machine supports silent mode in which machine uses lower acceleration to print more quietly",
-      "default": "0"
     },
     "silent_print_time": {
       "label": "Print time (silent mode)",
@@ -8390,7 +8556,7 @@
     },
     "slicing_pipeline_plugin": {
       "label": "Slicing Pipeline Plugin",
-      "tooltip": "Python plugin(s) invoked at each slicing pipeline step to read and modify intermediate slicing data, including a final G-code post-processing step. Research/experimental.",
+      "tooltip": "Python plugins invoked at each slicing pipeline step to read and modify intermediate slicing data, including a final G-code post-processing step. Research/experimental.",
       "default": [],
       "sections": {
         "process": {
@@ -8464,7 +8630,7 @@
     "slowdown_for_curled_perimeters": {
       "label": "Slow down for curled perimeters",
       "category": "Speed",
-      "tooltip": "Enable this option to slow down printing in areas where perimeters may have curled upwards.\nFor example, additional slowdown will be applied when printing overhangs on sharp corners like the front of the Benchy hull, reducing curling which compounds over multiple layers.\n\nIt is generally recommended to have this option switched on unless your printer cooling is powerful enough or the print speed is slow enough that perimeter curling does not happen. \nIf printing with a high external perimeter speed, this parameter may introduce wall artifacts when slowing down, due to the potentially large variance in print speeds causing the extruder to be unable to keep up with the requested flow change.\nRoot cause of these artifacts is most likely PA tuning being slightly off, especially when combined with a high PA smooth time.\n\nRecommendations when enabling this option:\n1. Reduce Pressure Advance smooth time to 0.015 - 0.02 so the extruder reacts quickly to the speed changes.\n2. Increase the minimum print speeds to limit the magnitude of the slowdown and reduce the variance between fast and slow segments.\n3. If artifacts still appear, enable Extrusion Rate Smoothing (ERS) to further smooth the flow transitions.\n\nNote: When this option is enabled, overhang perimeters are treated like overhangs, meaning the overhang speed is applied even if the overhanging perimeter is part of a bridge.\nFor example, when the perimeters are 100% overhanging, with no wall supporting them from underneath, the 100% overhang speed will be applied.",
+      "tooltip": "Enable this option to slow down printing in areas where perimeters may have curled upwards.\nFor example, additional slowdown will be applied when printing overhangs on sharp corners like the front of the Benchy hull, reducing curling which compounds over multiple layers.\n\nIt is generally recommended to have this option switched on unless your printer cooling is powerful enough or the print speed is slow enough that perimeter curling does not happen.\nIf printing with a high external perimeter speed, this parameter may introduce wall artifacts when slowing down, due to the potentially large variance in print speeds causing the extruder to be unable to keep up with the requested flow change.\nRoot cause of these artifacts is most likely PA tuning being slightly off, especially when combined with a high PA smooth time.\n\nRecommendations when enabling this option:\n1. Reduce Pressure Advance smooth time to 0.015 - 0.02 so the extruder reacts quickly to the speed changes.\n2. Increase the minimum print speeds to limit the magnitude of the slowdown and reduce the variance between fast and slow segments.\n3. If artifacts still appear, enable Extrusion Rate Smoothing (ERS) to further smooth the flow transitions.\n\nNote: When this option is enabled, overhang perimeters are treated like overhangs, meaning the overhang speed is applied even if the overhanging perimeter is part of a bridge.\nFor example, when the perimeters are 100% overhanging, with no wall supporting them from underneath, the 75% overhang speed will be applied, limited by the bridge speed.",
       "default": [
         "0"
       ],
@@ -8515,7 +8681,7 @@
     "small_perimeter_speed": {
       "label": "Small perimeters",
       "category": "Speed",
-      "tooltip": "This separate setting will affect the speed of perimeters having radius <= small_perimeter_threshold (usually holes). If expressed as percentage (for example: 80%) it will be calculated on the outer wall speed setting above. Set to zero for auto.",
+      "tooltip": "This separate setting will affect the speed of perimeters having radius <= small_perimeter_threshold (usually holes). If expressed as percentage (for example: 80%) it will be calculated on the outer wall speed setting above.",
       "unit": "mm/s or %",
       "default": [
         "50%"
@@ -8547,7 +8713,7 @@
     "small_support_perimeter_speed": {
       "label": "Small support perimeters",
       "category": "Speed",
-      "tooltip": "Same as \"Small perimeters\", but for supports. This separate setting will affect the speed of support for areas <= `small_support_perimeter_threshold`. If expressed as a percentage (for example: 80%), it will be calculated on the support or support interface speed setting above. Set to zero for auto.",
+      "tooltip": "Same as \"Small perimeters\", but for supports. This separate setting will affect the speed of support for areas <= `small_support_perimeter_threshold`. If expressed as a percentage (for example: 80%), it will be calculated on the support or support interface speed setting above.",
       "unit": "mm/s or %",
       "default": [
         "50%"
@@ -8593,7 +8759,7 @@
     "solid_infill_rotate_template": {
       "label": "Solid infill rotation template",
       "category": "Strength",
-      "tooltip": "This parameter adds a rotation of solid infill direction to each layer according to the specified template. The template is a comma-separated list of angles in degrees, e.g. '0,90'. The first angle is applied to the first layer, the second angle to the second layer, and so on. If there are more layers than angles, the angles will be repeated. Note that not all solid infill patterns support rotation.",
+      "tooltip": "This parameter adds a rotation of solid infill direction to each layer according to the specified template. The template is a comma-separated list of angles in degrees, e.g. '0,90'. The first angle is applied to the first layer, the second angle to the second layer, and so on. If there are more layers than angles, the angles will be repeated.\n\nNote that not all solid infill patterns support rotation.",
       "unit": "°",
       "default": "",
       "sections": {
@@ -8746,7 +8912,7 @@
     "sparse_infill_rotate_template": {
       "label": "Sparse infill rotation template",
       "category": "Strength",
-      "tooltip": "Rotate the sparse infill direction per layer using a template of angles. Enter comma-separated degrees (e.g., '0,30,60,90'). Angles are applied in order by layer and repeat when the list ends. Advanced syntax is supported: '+5' rotates +5° every layer; '+5#5' rotates +5° every 5 layers. See the Wiki for details. When a template is set, the standard infill direction setting is ignored. Note: some infill patterns (e.g., Gyroid) control rotation themselves; use with care.",
+      "tooltip": "Rotate the sparse infill direction per layer using a template of angles. Enter comma-separated degrees (e.g., '0,30,60,90'). Angles are applied in order by layer and repeat when the list ends.\n\nAdvanced syntax is supported: '+5' rotates +5° every layer; '+5#5' rotates +5° every 5 layers. See the Wiki for details.\n\nWhen a template is set, the standard infill direction setting is ignored.\n\nNote: some infill patterns (e.g., Gyroid) control rotation themselves; use with care.",
       "unit": "°",
       "default": "",
       "sections": {
@@ -8921,7 +9087,7 @@
     },
     "support_air_filtration": {
       "label": "Support air filtration",
-      "tooltip": "Enable this if printer support air filtration\nG-code command: M106 P3 S(0-255)",
+      "tooltip": "Enable this if the printer supports air filtration\nG-code command: M106 P3 S(0-255)",
       "default": "1"
     },
     "support_angle": {
@@ -9023,7 +9189,7 @@
     },
     "support_chamber_temp_control": {
       "label": "Support controlling chamber temperature",
-      "tooltip": "This option is enabled if machine support controlling chamber temperature\nG-code command: M141 S(0-255)",
+      "tooltip": "This option is enabled if the machine supports controlling the chamber temperature\nG-code command: M141 S(0-255)",
       "default": "1"
     },
     "support_cooling_filter": {
@@ -9467,7 +9633,7 @@
     "support_style": {
       "label": "Style",
       "category": "Support",
-      "tooltip": "Style and shape of the support. For normal support, projecting the supports into a regular grid will create more stable supports (default), while snug support towers will save material and reduce object scarring.\nFor tree support, slim and organic style will merge branches more aggressively and save a lot of material (default organic), while hybrid style will create similar structure to normal support under large flat overhangs.",
+      "tooltip": "Style and shape of the support.\n\nFor normal support, projecting the supports into a regular grid will create more stable supports (default), while snug support towers will save material and reduce object scarring.\n\nFor tree support, slim and organic style will merge branches more aggressively and save a lot of material (default organic), while hybrid style will create similar structure to normal support under large flat overhangs.",
       "enumValues": [
         "default",
         "grid",
@@ -9498,7 +9664,7 @@
     "support_threshold_angle": {
       "label": "Threshold angle",
       "category": "Support",
-      "tooltip": "Support will be generated for overhangs whose slope angle is below the threshold. The smaller this value is, the steeper the overhang that can be printed without support.\nNote: If set to 0, normal supports use the Threshold overlap instead, while tree supports fall back to a default value of 30.",
+      "tooltip": "Support will be generated for overhangs whose slope angle is below the threshold. The smaller this value is, the steeper the overhang that can be printed without support.\n\nNote: If set to 0, normal supports use the Threshold overlap instead, while tree supports fall back to a default value of 30.",
       "unit": "°",
       "default": "30",
       "sections": {
@@ -9724,7 +9890,7 @@
     },
     "timelapse_type": {
       "label": "Timelapse",
-      "tooltip": "If smooth or traditional mode is selected, a timelapse video will be generated for each print. After each layer is printed, a snapshot is taken with the chamber camera. All of these snapshots are composed into a timelapse video when printing completes. If smooth mode is selected, the toolhead will move to the excess chute after each layer is printed and then take a snapshot. Since the melt filament may leak from the nozzle during the process of taking a snapshot, a prime tower is required for smooth mode to wipe the nozzle.",
+      "tooltip": "If smooth or traditional mode is selected, a timelapse video will be generated for each print. After each layer is printed, a snapshot is taken with the chamber camera. All of these snapshots are composed into a timelapse video when printing completes.\n\nIf smooth mode is selected, the toolhead will move to the excess chute after each layer is printed and then take a snapshot. Since the melt filament may leak from the nozzle during the process of taking a snapshot, a prime tower is required for smooth mode to wipe the nozzle.",
       "enumValues": [
         "0",
         "1"
@@ -9748,7 +9914,7 @@
     },
     "tool_change_on_wipe_tower": {
       "label": "Tool change on wipe tower",
-      "tooltip": "Force the toolhead to travel to the wipe tower before issuing the tool change command (Tx). Only relevant for multi-extruder (multi-toolhead) printers using a Type 2 wipe tower. By default Orca skips the travel on multi-toolhead machines because the firmware handles the head swap, which can result in the Tx command being issued above the printed part. Enable this option if you want the tool change to always be issued above the wipe tower instead.",
+      "tooltip": "Force the toolhead to travel to the wipe tower before issuing the tool change command (Tx).\n\nOnly relevant for multi-extruder (multi-toolhead) printers using a Type 2 wipe tower. By default Orca skips the travel on multi-toolhead machines because the firmware handles the head swap, which can result in the Tx command being issued above the printed part. Enable this option if you want the tool change to always be issued above the wipe tower instead.",
       "default": "0"
     },
     "toolchange_cyclic_first_layer": {
@@ -9801,9 +9967,23 @@
     "top_bottom_infill_wall_overlap": {
       "label": "Top/Bottom solid infill/wall overlap",
       "category": "Strength",
-      "tooltip": "Top solid infill area is enlarged slightly to overlap with wall for better bonding and to minimize the appearance of pinholes where the top infill meets the walls. A value of 25-30% is a good starting point, minimizing the appearance of pinholes. The percentage value is relative to line width of sparse infill.",
+      "tooltip": "Top solid infill area is enlarged slightly to overlap with wall for better bonding and to minimize the appearance of pinholes where the top infill meets the walls. A value of 25-30% is a good starting point, minimizing the appearance of pinholes. The percentage value is relative to the inner wall line width.",
       "unit": "%",
       "default": "25%",
+      "sections": {
+        "process": {
+          "page": "Strength",
+          "group": "Top/bottom shells",
+          "order": 11
+        }
+      }
+    },
+    "top_color_penetration_layers": {
+      "label": "Top paint penetration layers",
+      "category": "Strength",
+      "unit": "layers",
+      "tooltip": "The number of layers, including the top surface layer, that take the color painted on a top surface. Set to 0 to use the top shell layers. A value larger than the top shell also colors the sparse infill below the painted area.",
+      "default": "0",
       "sections": {
         "process": {
           "page": "Strength",
@@ -10090,78 +10270,8 @@
       "tooltip": "Total cost of the material wasted on the wipe tower. Calculated from filament_cost value in Filament Settings."
     },
     "total_wipe_tower_filament": {
-      "label": "Wipe tower volume",
-      "tooltip": "Total filament volume extruded on the wipe tower."
-    },
-    "tpms_adaptive": {
-      "label": "Adaptive density (experimental)",
-      "category": "Strength",
-      "tooltip": "Grades the Gyroid and TPMS infill inside the object: its cells grow from the surface of the object towards its center. The sparse infill density is used at the surface and the interior density at the center.\nDistance warp, Smooth blend and Stepped shells follow the distance to the nearest surface, including the top and bottom, with the interior density at the point farthest from it:\n - Distance warp: one continuous pattern, stretched and sheared where the distance changes across directions, as in plates and long parts.\n - Smooth blend: the patterns of neighbouring densities blended into each other, with small loops where they meet.\n - Stepped shells: shells of the regular pattern at densities about 1.5 times apart, their lines joined along the shell boundaries.\n - Lobes: follows the 3D shape of the object, including its top and bottom. Every lobe, a part joined to the rest by a narrower neck, is graded towards its own center.\n - Normal Z, Y or X: follows the sections of the object normal to that axis, so the density does not change along it.",
-      "enumValues": [
-        "disabled",
-        "distance_warp",
-        "smooth_blend",
-        "stepped_shells",
-        "lobes",
-        "normal_z",
-        "normal_y",
-        "normal_x"
-      ],
-      "enumLabels": [
-        "Disabled",
-        "Distance warp",
-        "Smooth blend",
-        "Stepped shells",
-        "Lobes",
-        "Normal Z",
-        "Normal Y",
-        "Normal X"
-      ],
-      "default": "disabled",
-      "sections": {
-        "process": {
-          "page": "Strength",
-          "group": "Infill",
-          "order": 12
-        }
-      }
-    },
-    "tpms_adaptive_gradient": {
-      "label": "Adaptive gradient",
-      "category": "Strength",
-      "tooltip": "How the density changes from the surface to the center of the object.\nLinear: the density changes at a constant rate.\nQuadratic: the density stays close to the sparse infill density near the surface and changes faster towards the center.\nExponential: the density changes quickly just below the surface and levels off towards the center.",
-      "enumValues": [
-        "linear",
-        "quadratic",
-        "exponential"
-      ],
-      "enumLabels": [
-        "Linear",
-        "Quadratic",
-        "Exponential"
-      ],
-      "default": "linear",
-      "sections": {
-        "process": {
-          "page": "Strength",
-          "group": "Infill",
-          "order": 12
-        }
-      }
-    },
-    "tpms_interior_density": {
-      "label": "Interior density",
-      "category": "Strength",
-      "tooltip": "Density of the adaptive infill at the center of the object.",
-      "unit": "%",
-      "default": "5%",
-      "sections": {
-        "process": {
-          "page": "Strength",
-          "group": "Infill",
-          "order": 12
-        }
-      }
+      "label": "Total wipe tower filament",
+      "tooltip": "Total length of filament used on the wipe tower, in mm."
     },
     "travel_acceleration": {
       "label": "Travel",
@@ -10472,7 +10582,7 @@
     },
     "wait_for_temp_on_wipe_tower": {
       "label": "Wait for temperature on wipe tower",
-      "tooltip": "Pick up the new tool without waiting for it to reach printing temperature, travel to the wipe tower, and wait for the temperature there, right before purging. Ooze from the heat-up lands on the tower instead of the model, and the travel overlaps with the heating. Only relevant for multi-extruder (multi-toolhead) printers using a Type 2 wipe tower. The firmware or tool change macro must not wait for the temperature itself. When disabled, the temperature wait is issued right after the tool change command.",
+      "tooltip": "Pick up the new tool without waiting for it to reach printing temperature, travel to the wipe tower, and wait for the temperature there, right before purging. Ooze from the heat-up lands on the tower instead of the model, and the travel overlaps with the heating.\n\nOnly relevant for multi-extruder (multi-toolhead) printers using a Type 2 wipe tower. The firmware or tool change macro must not wait for the temperature itself. When disabled, the temperature wait is issued right after the tool change command.",
       "default": "0"
     },
     "wall_direction": {
@@ -10546,7 +10656,7 @@
     "wall_maximum_deviation": {
       "label": "Maximum wall deviation",
       "category": "Quality",
-      "tooltip": "The maximum deviation allowed when reducing the resolution for the 'Maximum wall resolution' setting. If you increase this, the print will be less accurate, but the G-Code will be smaller. 'Maximum wall deviation' limits 'Maximum wall resolution', so if the two conflict, 'Maximum wall deviation' takes precedence.",
+      "tooltip": "The maximum deviation allowed when reducing the resolution for the 'Maximum wall resolution' setting. If you increase this, the print will be less accurate, but the G-code will be smaller. 'Maximum wall deviation' limits 'Maximum wall resolution', so if the two conflict, 'Maximum wall deviation' takes precedence.",
       "unit": "mm",
       "default": "0.025",
       "sections": {
@@ -10574,7 +10684,7 @@
     "wall_sequence": {
       "label": "Walls printing order",
       "category": "Quality",
-      "tooltip": "Print sequence of the internal (inner) and external (outer) walls.\n\nUse Inner/Outer for best overhangs. This is because the overhanging walls can adhere to a neighbouring perimeter while printing. However, this option results in slightly reduced surface quality as the external perimeter is deformed by being squashed to the internal perimeter.\n\nUse Inner/Outer/Inner for the best external surface finish and dimensional accuracy as the external wall is printed undisturbed from an internal perimeter. However, overhang performance will reduce as there is no internal perimeter to print the external wall against. This option requires a minimum of 3 walls to be effective as it prints the internal walls from the 3rd perimeter onwards first, then the external perimeter and, finally, the first internal perimeter. This option is recommended against the Outer/Inner option in most cases.\n\nUse Outer/Inner for the same external wall quality and dimensional accuracy benefits of Inner/Outer/Inner option. However, the Z seams will appear less consistent as the first extrusion of a new layer starts on a visible surface.",
+      "tooltip": "Print sequence of the internal (inner) and external (outer) walls.\n\nUse Inner/Outer for best overhangs. This is because the overhanging walls can adhere to a neighbouring perimeter while printing. However, this option results in slightly reduced surface quality as the external perimeter is deformed by being squashed to the internal perimeter.\n\nUse Inner/Outer/Inner for the best external surface finish and dimensional accuracy as the external wall is printed undisturbed from an internal perimeter. However, overhang performance will reduce as there is no internal perimeter to print the external wall against. This option requires a minimum of 3 walls to be effective as it prints the internal walls from the 3rd perimeter onwards first, then the external perimeter and, finally, the first internal perimeter. This option is recommended over the Outer/Inner option in most cases.\n\nUse Outer/Inner for the same external wall quality and dimensional accuracy benefits of Inner/Outer/Inner option. However, the Z seams will appear less consistent as the first extrusion of a new layer starts on a visible surface.",
       "enumValues": [
         "inner wall/outer wall",
         "outer wall/inner wall",
@@ -10611,7 +10721,7 @@
     "wall_transition_filter_deviation": {
       "label": "Wall transitioning filter margin",
       "category": "Quality",
-      "tooltip": "Prevent transitioning back and forth between one extra wall and one less. This margin extends the range of extrusion widths which follow to [Minimum wall width - margin, 2 * Minimum wall width + margin]. Increasing this margin reduces the number of transitions, which reduces the number of extrusion starts/stops and travel time. However, large extrusion width variation can lead to under- or overextrusion problems. It's expressed as a percentage over nozzle diameter.",
+      "tooltip": "Prevent transitioning back and forth between one extra wall and one less. This margin extends the range of extrusion widths which follow to [Minimum wall width - margin, 2 * Minimum wall width + margin].\n\nIncreasing this margin reduces the number of transitions, which reduces the number of extrusion starts/stops and travel time. However, large extrusion width variation can lead to under- or overextrusion problems.\n\nIt's expressed as a percentage over nozzle diameter.",
       "unit": "%",
       "default": "25%",
       "sections": {
@@ -10667,7 +10777,7 @@
     "wipe_inward": {
       "label": "Wipe inward",
       "category": "Quality",
-      "tooltip": "Applies only to external walls, including hole boundaries. Moves the hot nozzle toward printed inner walls during wiping to reduce reheating of freshly printed plastic and seam marks.\n\nEspecially useful at layer heights below 0.1 mm, where wipe marks are more visible.\n\nUses the regular wipe if no adjacent inner wall is already printed (single-wall areas or Outer/Inner wall order), or if no supported inward path can be found, for example at tight corners or seam gaps.",
+      "tooltip": "Applies only to external walls, including hole boundaries. Moves the hot nozzle toward the inner walls during wiping to reduce reheating of freshly printed plastic and seam marks.\n\nEspecially useful at layer heights below 0.1 mm, where wipe marks are more visible.\n\nUses the regular wipe where the outer wall has no adjacent inner wall, such as in single-wall areas, or if no supported inward path can be found, for example at tight corners or seam gaps.",
       "default": "0",
       "sections": {
         "process": {
@@ -10680,7 +10790,7 @@
     "wipe_inward_distance": {
       "label": "Wipe inward distance",
       "category": "Quality",
-      "tooltip": "The distance the wipe path is shifted away from the external perimeter, specified in millimeters or as a percentage of the actual outer-wall extrusion width.\n\nFor example, 50% shifts the path by half of the outer-wall width. The effective offset is limited by both the actual outer-wall width and the available spacing to the adjacent wall, so values above 100% or an equivalent absolute distance have no additional effect. Set to 0 to disable the offset.",
+      "tooltip": "The distance the wipe path is shifted away from the external perimeter, specified in millimeters or as a percentage of the actual outer-wall extrusion width.\n\nFor example, 50% shifts the path by half of the outer-wall width. The effective offset is limited by both the actual outer-wall width and the available spacing to the adjacent wall, so values above 100% or an equivalent absolute distance have no additional effect. Set to 0 to disable the offset.\n\nWith Outer/Inner or Inner/Outer/Inner wall order, the offset is limited to 50% of the actual outer-wall width because the adjacent inner wall is printed after the outer wall. This also applies to equivalent distances specified in millimeters.",
       "unit": "mm or %",
       "default": "50%",
       "sections": {
@@ -10746,7 +10856,7 @@
     },
     "wipe_tower_extra_flow": {
       "label": "Extra flow for purging",
-      "tooltip": "Extra flow used for the purging lines on the wipe tower. This makes the purging lines thicker or narrower than they normally would be. The spacing is adjusted automatically.",
+      "tooltip": "Extra flow used for the purging lines on the wipe tower. This makes the purging lines thicker than they normally would be. The spacing is adjusted automatically.",
       "unit": "%",
       "default": "100%",
       "sections": {
@@ -10810,7 +10920,7 @@
     },
     "wipe_tower_max_purge_speed": {
       "label": "Maximum wipe tower print speed",
-      "tooltip": "The maximum print speed when purging in the wipe tower and printing the wipe tower sparse layers. When purging, if the sparse infill speed or calculated speed from the filament max volumetric speed is lower, the lowest will be used instead.\n\nWhen printing the sparse layers, if the internal perimeter speed or calculated speed from the filament max volumetric speed is lower, the lowest will be used instead.\n\nIncreasing this speed may affect the tower's stability as well as increase the force with which the nozzle collides with any blobs that may have formed on the wipe tower.\n\nBefore increasing this parameter beyond the default of 90 mm/s, make sure your printer can reliably bridge at the increased speeds and that ooze when tool changing is well controlled.\n\nFor the wipe tower external perimeters the internal perimeter speed is used regardless of this setting.",
+      "tooltip": "The maximum print speed when purging in the wipe tower and printing the wipe tower sparse layers. When purging, if the sparse infill speed or calculated speed from the filament max volumetric speed is lower, the lowest will be used instead.\n\nWhen printing the sparse layers, if the sparse infill speed or calculated speed from the filament max volumetric speed is lower, the lowest will be used instead.\n\nIncreasing this speed may affect the tower's stability as well as increase the force with which the nozzle collides with any blobs that may have formed on the wipe tower.\n\nBefore increasing this parameter beyond the default of 90 mm/s, make sure your printer can reliably bridge at the increased speeds and that ooze when tool changing is well controlled.\n\nFor the wipe tower external perimeters the internal perimeter speed is used, also limited by this setting.",
       "unit": "mm/s",
       "default": "90",
       "sections": {
@@ -10886,7 +10996,7 @@
     },
     "wipe_tower_wall_type": {
       "label": "Wall type",
-      "tooltip": "Wipe tower outer wall type.\n1. Rectangle: The default wall type, a rectangle with fixed width and height.\n2. Cone: A cone with a fillet at the bottom to help stabilize the wipe tower.\n3. Rib: Adds four ribs to the tower wall for enhanced stability.",
+      "tooltip": "Wipe tower outer wall type.\n1. Rectangle: A rectangle with fixed width and height.\n2. Cone: A cone with a fillet at the bottom to help stabilize the wipe tower.\n3. Rib: The default wall type, which adds four ribs to the tower wall for enhanced stability.",
       "enumValues": [
         "rectangle",
         "cone",
@@ -11053,7 +11163,7 @@
     "zaa_minimize_perimeter_height": {
       "label": "Minimize wall height angle",
       "category": "Quality",
-      "tooltip": "Reduce the height of top-surface perimeters to match the model edge height.\nAffects perimeters with a slope less than this angle (degrees).\nA reasonable value is 35. Set to 0 to disable.",
+      "tooltip": "Reduce the height of top-surface perimeters to match the model edge height.\nAffects perimeters with a slope greater than this angle (degrees).\nA reasonable value is 35. Set to 0 to disable.",
       "unit": "°",
       "default": "35",
       "sections": {
