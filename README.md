@@ -31,6 +31,66 @@ Download the installer for your system from the [latest release](https://github.
 
 Close OrcaSlicer before saving presets with the comparer, and restart it afterwards to see the changes.
 
+## Using the comparer
+
+The comparer reads your presets from OrcaSlicer's data folder, which it finds on its own: `%APPDATA%\OrcaSlicer` on Windows, `~/Library/Application Support/OrcaSlicer` on macOS, and `~/.config/OrcaSlicer` on Linux. For a portable install or a second OrcaSlicer build, open **Settings** (the gear at the top right) and choose that build's data folder.
+
+### Compare presets
+
+1. Choose **Filament** or **Process** at the top.
+2. **Choose base:** pick the preset to compare the others with, and to copy settings from.
+3. **Choose targets:** pick one or more presets to compare with the base. Each one gets its own column in the table.
+
+In both pickers you can filter by name, vendor, and printer, and turn on **Show system presets** to include OrcaSlicer's built-in presets. Each picker remembers its filters. If the same preset name appears more than once, a badge tells them apart: "default" for the folder OrcaSlicer uses while you're signed out, and "account" for your Orca Cloud account's folder.
+
+The table lists settings by OrcaSlicer's names, grouped under the same sections as OrcaSlicer's settings tabs. Above it:
+
+- **Only differences** (on by default) shows only the settings where a target differs from the base. Turn it off to see every setting.
+- **Group by section** turns the section headings on or off.
+- **Hide unused** hides keys that OrcaSlicer ignores, such as leftovers from Bambu Studio.
+- **Filter settings** finds a setting by its name or its key.
+
+Hover over a setting's info icon, or tap it, for OrcaSlicer's description and where each value comes from: the preset itself, one of its parents, or OrcaSlicer's default (shown in italics). If a target can't be opened, for example because its parent preset no longer exists, it's left out of the table with a message saying why.
+
+### Copy settings
+
+Settings only ever copy from the base to the targets. To copy the other way, choose the other preset as the base.
+
+1. Tick the settings to copy in the table's first column. Each section has its own select-all.
+2. Choose **Copy selected to** (it names the target, or says how many there are).
+3. Check the preview, which shows each target's current and new value, and the targets that already match. You can leave out a target here.
+4. Sometimes a target sets a value that equals what it would get from its parent anyway. The preview then shows a **Pin override** toggle for that setting. Keep it pinned to keep the value fixed in that preset, or unpin it to drop the override so the preset follows its parent again.
+5. Apply the copy.
+
+Changed values are marked in the table until you save, and **Undo** and **Redo** (Ctrl+Z and Ctrl+Y, or ⌘ on macOS) step through your copies. The comparer asks before you lose unsaved changes, for example when you choose another base or close the window.
+
+### Save
+
+Choose **Save** and check the list of changes. Each preset is saved on its own, and the results say which were saved and which failed. A failed preset keeps its changes so you can try again. If a preset changed on disk while you were working (for example, you saved it in OrcaSlicer), choose **Reload from disk and keep my changes**.
+
+- **User presets** are saved in place, with only the changed settings written, in OrcaSlicer's own format. They're also marked so Orca Cloud uploads the change on its next sync.
+- **System presets** are never changed. Their changes are saved as a new user preset that inherits from the system preset. You name it in the save dialog; the default is "<name> - Copy".
+
+**Restart OrcaSlicer to see saved changes.** OrcaSlicer reads presets when it starts. It's best to close OrcaSlicer before saving: if you edit and save the same preset in a running OrcaSlicer, it overwrites the comparer's changes.
+
+### Backups
+
+Before saving, the comparer copies every file it's about to change into its own folder. It never puts backups next to your presets, where OrcaSlicer would find them. Each save gets a folder named after its date and time, holding the files at the same paths they have under OrcaSlicer's data folder:
+
+- Windows: `%APPDATA%\io.github.sheariley.orca-preset-comparer\backups`
+- macOS: `~/Library/Application Support/io.github.sheariley.orca-preset-comparer/backups`
+- Linux: `~/.local/share/io.github.sheariley.orca-preset-comparer/backups`
+
+To undo a save by hand, close OrcaSlicer and copy the files from a backup folder back into OrcaSlicer's data folder.
+
+### Limits
+
+- Only filament and process presets can be compared, not printer presets.
+- Presets come from OrcaSlicer's data folder; opening a preset file from somewhere else isn't supported yet.
+- Old backups aren't deleted automatically yet.
+- The macOS and Linux builds haven't been tested on those systems yet.
+- The OrcaSlicer plugin is experimental and read-only. It needs an OrcaSlicer nightly build, and it hasn't been tested inside OrcaSlicer yet.
+
 ## Prerequisites
 
 - Node.js 22 or later, and pnpm 12 (`npm install -g pnpm@12`)
